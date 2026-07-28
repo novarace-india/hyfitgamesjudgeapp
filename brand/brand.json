@@ -1,0 +1,216 @@
+{
+  "source": "https://www.hyfitgames.com/",
+  "siteTitle": "HYFIT Games - Run. Lift. Live.",
+  "palette": [
+    {
+      "hex": "#FAFAFA",
+      "rgb": "rgb(250, 250, 250)",
+      "share": 74.3,
+      "roles": [
+        "bg",
+        "border",
+        "text"
+      ]
+    },
+    {
+      "hex": "#000000",
+      "rgb": "rgb(0, 0, 0)",
+      "share": 9.0,
+      "roles": [
+        "bg"
+      ]
+    },
+    {
+      "hex": "#121212",
+      "rgb": "rgb(18, 18, 18)",
+      "share": 8.4,
+      "roles": [
+        "bg"
+      ]
+    },
+    {
+      "hex": "#333333",
+      "rgb": "rgb(51, 51, 51)",
+      "share": 4.0,
+      "roles": [
+        "border"
+      ]
+    },
+    {
+      "hex": "#88021B",
+      "rgb": "rgb(136, 2, 27)",
+      "share": 1.3,
+      "roles": [
+        "bg",
+        "border",
+        "text"
+      ]
+    },
+    {
+      "hex": "#7F1D1D",
+      "rgb": "rgb(127, 29, 29)",
+      "share": 0.5,
+      "roles": [
+        "bg",
+        "border"
+      ]
+    },
+    {
+      "hex": "#4C1D95",
+      "rgb": "rgb(76, 29, 149)",
+      "share": 0.4,
+      "roles": [
+        "bg",
+        "border"
+      ]
+    },
+    {
+      "hex": "#0F766E",
+      "rgb": "rgb(15, 118, 110)",
+      "share": 0.4,
+      "roles": [
+        "bg",
+        "border"
+      ]
+    }
+  ],
+  "fontsByUsage": [
+    {
+      "family": "Arial",
+      "chars": 2887
+    }
+  ],
+  "fontFaces": [],
+  "fontFiles": [],
+  "googleFonts": [],
+  "headings": [
+    {
+      "tag": "h2",
+      "text": "HYFIT GAMES - RUN. LIFT. LIVE.",
+      "fontFamily": "Arial",
+      "fontSize": "60px",
+      "fontWeight": "900",
+      "letterSpacing": "-1.5px",
+      "textTransform": "uppercase",
+      "lineHeight": "60px",
+      "color": "rgb(250, 250, 250)"
+    },
+    {
+      "tag": "h3",
+      "text": "Cognitive Start",
+      "fontFamily": "Arial",
+      "fontSize": "16px",
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "textTransform": "none",
+      "lineHeight": "24px",
+      "color": "rgb(250, 250, 250)"
+    },
+    {
+      "tag": "h4",
+      "text": "Next Gen (8-11 Years)",
+      "fontFamily": "Arial",
+      "fontSize": "30px",
+      "fontWeight": "900",
+      "letterSpacing": "normal",
+      "textTransform": "none",
+      "lineHeight": "36px",
+      "color": "rgb(255, 255, 255)"
+    }
+  ],
+  "body": {
+    "tag": "p",
+    "text": "POWERED BY CULT",
+    "fontFamily": "Arial",
+    "fontSize": "16px",
+    "fontWeight": "800",
+    "letterSpacing": "0.8px",
+    "textTransform": "uppercase",
+    "lineHeight": "24px",
+    "color": "rgb(136, 2, 27)"
+  },
+  "buttons": [
+    {
+      "text": "HOME",
+      "background": "rgba(0, 0, 0, 0)",
+      "color": "rgb(250, 250, 250)",
+      "borderRadius": "10px",
+      "border": "0px solid rgb(51, 51, 51)",
+      "padding": "8px 12px",
+      "fontWeight": "700",
+      "textTransform": "uppercase",
+      "fontSize": "14px",
+      "fontFamily": "Arial"
+    },
+    {
+      "text": "EVENTS",
+      "background": "rgb(136, 2, 27)",
+      "color": "rgb(255, 255, 255)",
+      "borderRadius": "10px",
+      "border": "0px solid rgb(51, 51, 51)",
+      "padding": "8px 16px",
+      "fontWeight": "700",
+      "textTransform": "uppercase",
+      "fontSize": "14px",
+      "fontFamily": "Arial"
+    },
+    {
+      "text": "Cognitive Start",
+      "background": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "borderRadius": "0px",
+      "border": "0px solid rgb(51, 51, 51)",
+      "padding": "16px 0px",
+      "fontWeight": "700",
+      "textTransform": "none",
+      "fontSize": "20px",
+      "fontFamily": "Arial"
+    },
+    {
+      "text": "Open Category",
+      "background": "rgb(136, 2, 27)",
+      "color": "rgb(255, 255, 255)",
+      "borderRadius": "12px",
+      "border": "0px solid rgb(51, 51, 51)",
+      "padding": "10px 12px",
+      "fontWeight": "700",
+      "textTransform": "none",
+      "fontSize": "16px",
+      "fontFamily": "Arial"
+    },
+    {
+      "text": "Pro Category",
+      "background": "rgba(0, 0, 0, 0)",
+      "color": "rgba(255, 255, 255, 0.7)",
+      "borderRadius": "12px",
+      "border": "0px solid rgb(51, 51, 51)",
+      "padding": "10px 12px",
+      "fontWeight": "700",
+      "textTransform": "none",
+      "fontSize": "16px",
+      "fontFamily": "Arial"
+    }
+  ],
+  "logos": [
+    {
+      "file": "hyfit-logo-red-SMZJ9JPG.png",
+      "src": "https://www.hyfitgames.com/assets/hyfit-logo-red-SMZJ9JPG.png",
+      "alt": "HYFIT"
+    },
+    {
+      "file": "sponsors-logo-cult-D2EQWXdO.png",
+      "src": "https://www.hyfitgames.com/assets/sponsors-logo-cult-D2EQWXdO.png",
+      "alt": "Cult"
+    },
+    {
+      "file": "sponsors-logo-healthyfy-BJhHQF65.png",
+      "src": "https://www.hyfitgames.com/assets/sponsors-logo-healthyfy-BJhHQF65.png",
+      "alt": "Healthify"
+    },
+    {
+      "file": "hyfit-logo-red.png",
+      "src": "https://www.hyfitgames.com/hyfit-logo-red.png",
+      "alt": "favicon"
+    }
+  ]
+}

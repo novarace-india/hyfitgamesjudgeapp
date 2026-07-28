@@ -1,0 +1,101 @@
+# HYFIT Games Judge App
+
+A responsive field-judging web application for HYROX-style events. The app
+supports judge login, event and athlete pairing, timed cognitive preview,
+six-station penalty capture, cognitive recall scoring and a consolidated result.
+
+## Included
+
+- Judge / Volunteer / Mobile ID entry
+- Event selection and participant search
+- Duplicate-assignment warning
+- Timed RGB cognitive sequence
+- Six station workflow:
+  1. Dumbbell Step-Ups
+  2. Farmer's Carry
+  3. Bear Crawl
+  4. Burpees to Plate
+  5. Front Carry + Air Squats
+  6. Tyre Flips
+- Quick and custom penalties with judge notes
+- Cognitive recall scoring and below-60% penalty
+- Final accumulated penalty summary
+- Device-local autosave, offline indicator and recovery interface
+- Responsive desktop/tablet/mobile design
+- Print-friendly result summary
+
+## Run on a Mac
+
+### 1. Install Node.js
+
+Install Node.js 22 or later from <https://nodejs.org>, or with Homebrew:
+
+```bash
+brew install node
+```
+
+Confirm the installation:
+
+```bash
+node --version
+npm --version
+```
+
+### 2. Unzip and open the project
+
+```bash
+cd ~/Downloads
+unzip HYFIT-Games-Judge-App-Source.zip
+cd HYFIT-Games-Judge-App
+```
+
+### 3. Install dependencies
+
+```bash
+npm install
+```
+
+### 4. Start the app
+
+```bash
+npm run dev
+```
+
+Open the local address printed in Terminal, normally:
+
+<http://localhost:5173>
+
+Use any value as the Judge ID in this demonstration build.
+
+## Production build
+
+The included `npm run build` helper is intended for the hosted Linux build
+environment. For everyday development on macOS, use `npm run dev`.
+
+## Important production note
+
+This package contains the complete interactive frontend demonstrated in the
+deployed app. Participant data is currently sample data in `app/page.tsx`, and
+active-race recovery uses browser storage.
+
+Before using it for a live event with multiple devices, connect it to a central
+backend providing:
+
+- Excel judge and participant imports
+- Secure ID authentication
+- Central event and participant database
+- Atomic judge-to-athlete assignment locks
+- Server-side penalty and audit records
+- Cross-device synchronization and conflict resolution
+- Event-control dashboard and exports
+
+## Main files
+
+- `app/page.tsx` — application workflow and interaction logic
+- `app/globals.css` — complete responsive visual design
+- `app/layout.tsx` — document layout and metadata
+- `package.json` — dependencies and commands
+
+## Technology
+
+React 19, TypeScript, Vinext/Next-compatible routing, Vite and Tailwind CSS.
