@@ -39,6 +39,26 @@ try {
       [staffId,name,pinHash,role,active.id],
     );
   }
+  const admin = (await pool.query("SELECT id FROM users WHERE staff_id='ADMIN'")).rows[0];
+  const volunteer = (await pool.query("SELECT id FROM users WHERE staff_id='CHECKIN1'")).rows[0];
+  const station = await pool.query(
+    `INSERT INTO checkin_stations(event_id,code,name,created_by)
+     VALUES($1,'C01','Main Gate',$2)
+     ON CONFLICT DO NOTHING RETURNING id`,
+    [active.id, admin.id],
+  );
+  const stationId = station.rows[0]?.id ?? (await pool.query(
+    "SELECT id FROM checkin_stations WHERE event_id=$1 AND lower(code)='c01'",
+    [active.id],
+  )).rows[0].id;
+  await pool.query(
+    `INSERT INTO checkin_station_assignments(event_id,station_id,volunteer_id,assigned_by)
+     SELECT $1,$2,$3,$4 WHERE NOT EXISTS(
+       SELECT 1 FROM checkin_station_assignments
+       WHERE event_id=$1 AND volunteer_id=$3 AND released_at IS NULL
+     )`,
+    [active.id, stationId, volunteer.id, admin.id],
+  );
   process.stdout.write(`Bootstrap login: ADMIN / ${pin}\n`);
   process.stdout.write(`Demo logins: CHECKIN1 / ${pin}, JUDGE1 / ${pin}\n`);
 } finally {

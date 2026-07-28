@@ -7,13 +7,18 @@ export type AppUser = {
   name: string;
   role: AppRole;
   eventId: string | null;
+  sessionId: string;
+  deviceLabel: string;
+  ipAddress: string;
 };
 
 export async function currentUser(request: Request): Promise<AppUser | null> {
   const token = parseCookies(request).get("hyfit_session");
   if (!token) return null;
   const result = await query<AppUser>(
-    `SELECT u.id, u.staff_id AS "staffId", u.name, u.role, u.event_id AS "eventId"
+    `SELECT u.id, u.staff_id AS "staffId", u.name, u.role, u.event_id AS "eventId",
+      s.id AS "sessionId",COALESCE(s.device_label,'') AS "deviceLabel",
+      COALESCE(s.ip_address,'') AS "ipAddress"
        FROM sessions s JOIN users u ON u.id=s.user_id
       WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.enabled=true`,
     [tokenHash(token)],

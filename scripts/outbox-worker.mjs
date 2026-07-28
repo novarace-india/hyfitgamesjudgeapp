@@ -45,11 +45,24 @@ async function processBatch() {
       const response = await fetch(target, { method: "POST", signal: AbortSignal.timeout(8000), headers: { accept: "application/json,text/plain,*/*" } });
       if (!response.ok) throw new Error(`RaceResult HTTP ${response.status}`);
       await pool.query("UPDATE outbox_operations SET state='confirmed',confirmed_at=now(),updated_at=now(),last_error=NULL WHERE id=$1", [operation.id]);
-      const pending = await pool.query(
-        "SELECT count(*)::int AS count FROM outbox_operations WHERE participant_id=$1 AND state<>'confirmed'",
-        [operation.participant_id],
-      );
-      if (pending.rows[0].count === 0) await pool.query("UPDATE participants SET checkin_state='checked_in' WHERE id=$1 AND checkin_state='pending_sync'", [operation.participant_id]);
+      const checkinMatch = operation.operation_key.match(/^checkin:([^:]+):/);
+      if (checkinMatch) {
+        const synchronization = await pool.query(
+          `SELECT c.id,
+            count(o.*)::int AS total,
+            count(*) FILTER(WHERE o.state='confirmed')::int AS confirmed,
+            count(*) FILTER(WHERE o.state='conflict')::int AS conflicts
+           FROM checkins c
+           LEFT JOIN outbox_operations o ON o.operation_key LIKE 'checkin:'||c.transaction_id||':%'
+           WHERE c.transaction_id=$1 GROUP BY c.id`,
+          [checkinMatch[1]],
+        );
+        const status = synchronization.rows[0];
+        if (status?.total === 3 && status.confirmed === 3) {
+          await pool.query("UPDATE checkins SET state='complete' WHERE id=$1", [status.id]);
+          await pool.query("UPDATE participants SET checkin_state='checked_in' WHERE id=$1", [operation.participant_id]);
+        }
+      }
     } catch (error) {
       const attempts = operation.attempts + 1;
       const state = attempts >= 8 ? "conflict" : "failed";
@@ -58,7 +71,11 @@ async function processBatch() {
         `UPDATE outbox_operations SET state=$2,attempts=$3,last_error=$4,next_attempt_at=now()+($5||' seconds')::interval,updated_at=now() WHERE id=$1`,
         [operation.id, state, attempts, String(error instanceof Error ? error.message : error).slice(0, 500), delay],
       );
-      if (state === "conflict" && operation.participant_id) await pool.query("UPDATE participants SET checkin_state='conflict' WHERE id=$1", [operation.participant_id]);
+      if (state === "conflict" && operation.participant_id) {
+        await pool.query("UPDATE participants SET checkin_state='conflict' WHERE id=$1", [operation.participant_id]);
+        const checkinMatch = operation.operation_key.match(/^checkin:([^:]+):/);
+        if (checkinMatch) await pool.query("UPDATE checkins SET state='conflict' WHERE transaction_id=$1", [checkinMatch[1]]);
+      }
     }
   }
   return operations.length;
