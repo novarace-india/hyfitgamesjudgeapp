@@ -9,7 +9,7 @@ six-station penalty capture, cognitive recall scoring and a consolidated result.
 - Judge / Volunteer / Mobile ID entry
 - Event selection and participant search
 - Duplicate-assignment warning
-- Timed RGB cognitive sequence
+- Timed R/G/Y cognitive sequence with explicit lettered tiles
 - Six station workflow:
   1. Dumbbell Step-Ups
   2. Farmer's Carry
@@ -18,7 +18,7 @@ six-station penalty capture, cognitive recall scoring and a consolidated result.
   5. Front Carry + Air Squats
   6. Tyre Flips
 - Quick and custom penalties with judge notes
-- Cognitive recall scoring and below-60% penalty
+- Position-by-position cognitive reveal, correctness percentage and below-60% penalty
 - Final accumulated penalty summary
 - Device-local autosave, offline indicator and recovery interface
 - Responsive desktop/tablet/mobile design
@@ -71,6 +71,28 @@ Use any value as the Judge ID in this demonstration build.
 
 The included `npm run build` helper is intended for the hosted Linux build
 environment. For everyday development on macOS, use `npm run dev`.
+
+## Deploy on Railway
+
+This repository includes a root-level [`railway.json`](./railway.json) for
+repository-based deployment with Railway Railpack.
+
+1. In Railway, create a new project and choose **Deploy from GitHub repo**.
+2. Select this repository and deploy it from the repository root.
+3. Railway will install dependencies, run `npm run build`, and start the app
+   with `npm start`.
+4. After the `/` health check passes, open the service settings and generate a
+   public Railway domain.
+
+No application environment variables are currently required. Vinext
+automatically listens on Railway's injected `PORT` and binds to `0.0.0.0`.
+Configuration in `railway.json` overrides conflicting build or deploy settings
+in the Railway dashboard.
+
+For Railway configuration details, see the official
+[Config as Code](https://docs.railway.com/config-as-code) and
+[Application Failed to Respond](https://docs.railway.com/networking/troubleshooting/application-failed-to-respond)
+documentation.
 
 ## Important production note
 

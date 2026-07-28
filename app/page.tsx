@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { colorChoices, colorSequence, scoreSequence, type ColorKey } from "./cognitive-sequence";
 
 type Screen =
   | "login"
@@ -39,18 +40,34 @@ const participants: Participant[] = [
   { bib: "N-0341", name: "Aarav Rao", category: "NextGen Boys", wave: "Wave 03 · 16:30", avatar: "AR", status: "Ready" },
 ];
 
-const rgb = [
-  { key: "R", color: "#ff3b45" },
-  { key: "G", color: "#21d990" },
-  { key: "B", color: "#4388ff" },
-  { key: "R", color: "#ff3b45" },
-  { key: "B", color: "#4388ff" },
-  { key: "G", color: "#21d990" },
-  { key: "G", color: "#21d990" },
-  { key: "R", color: "#ff3b45" },
-];
+const sequenceLength = colorSequence.length;
 
 const stepLabels = ["Start", ...stations, "Recall", "Finish"];
+
+function SequenceTile({
+  colorKey,
+  index,
+  match,
+}: {
+  colorKey: ColorKey;
+  index: number;
+  match?: boolean;
+}) {
+  const choice = colorChoices[colorKey];
+  const status = match === undefined ? undefined : match ? "Correct" : "Incorrect";
+
+  return (
+    <div
+      className={`sequence-tile${status ? ` ${match ? "correct" : "incorrect"}` : ""}`}
+      style={{ "--tile-color": choice.color, "--tile-text": choice.textColor } as React.CSSProperties}
+      aria-label={`Position ${index + 1}: ${choice.label}${status ? `, ${status}` : ""}`}
+    >
+      <small>{index + 1}</small>
+      <strong>{choice.key}</strong>
+      {status && <span className="match-marker" aria-hidden="true">{match ? "✓" : "×"}</span>}
+    </div>
+  );
+}
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("login");
@@ -60,7 +77,7 @@ export default function Home() {
   const [station, setStation] = useState(0);
   const [penalties, setPenalties] = useState<number[]>(Array(6).fill(0));
   const [notes, setNotes] = useState<string[]>(Array(6).fill(""));
-  const [recall, setRecall] = useState<string[]>([]);
+  const [recall, setRecall] = useState<ColorKey[]>([]);
   const [recallPenalty, setRecallPenalty] = useState(0);
   const [seconds, setSeconds] = useState(10);
   const [online, setOnline] = useState(true);
@@ -96,10 +113,8 @@ export default function Home() {
     return q ? participants.filter((p) => `${p.name} ${p.bib}`.toLowerCase().includes(q)) : participants.slice(0, 3);
   }, [query]);
 
-  const score = useMemo(
-    () => Math.round((recall.filter((v, i) => v === rgb[i]?.key).length / rgb.length) * 100),
-    [recall],
-  );
+  const { correctCount, percentage: score } = useMemo(() => scoreSequence(recall), [recall]);
+  const recallComplete = recall.length === sequenceLength;
   const stationTotal = penalties.reduce((a, b) => a + b, 0);
   const total = stationTotal + recallPenalty;
 
@@ -250,7 +265,7 @@ export default function Home() {
               <div className="sequence-screen">
                 <div className="race-meta"><span>{athlete.bib} · {athlete.name}</span><b>STEP 0 OF 8</b></div>
                 <div className="sequence-head"><div className="eyebrow">COGNITIVE SEQUENCE</div><h2>Memorise the colour order</h2><p>Show this screen to the athlete. The sequence hides when the timer ends.</p></div>
-                {seconds > 0 ? <div className="rgb-grid">{rgb.map((c, i) => <div key={i} style={{ background: c.color }}><small>{i + 1}</small></div>)}</div> : <div className="sequence-hidden"><span>✓</span><b>Sequence hidden</b><small>Do not show it again to the athlete.</small></div>}
+                {seconds > 0 ? <div className="sequence-row memorise-row" aria-label="Sequence to memorise">{colorSequence.map((colorKey, index) => <SequenceTile key={index} colorKey={colorKey} index={index} />)}</div> : <div className="sequence-hidden"><span>✓</span><b>Sequence hidden</b><small>Do not show it again to the athlete.</small></div>}
                 <div className="timer-line"><div className="timer-ring">{seconds}<small>SEC</small></div><div className="timer-copy"><b>{seconds ? "Memorisation in progress" : "Ready to start"}</b><span>{seconds ? "Sequence will hide automatically" : "Confirm athlete is at the start line"}</span></div></div>
                 <button className="primary wide" disabled={seconds > 0} onClick={() => setScreen("race")}>Start race & lock sequence <span>→</span></button>
                 <button className="text-btn" onClick={() => { setSeconds(10); flash("Timer restarted and action logged"); }}>Restart timer (logged)</button>
@@ -285,11 +300,20 @@ export default function Home() {
               <div className="recall-wrap">
                 <div className="race-meta"><span>{athlete.bib} · {athlete.name}</span><b>COGNITIVE RECALL</b></div>
                 <div className="sequence-head"><div className="eyebrow">FINAL CHALLENGE</div><h2>Recreate the colour order</h2><p>Ask the athlete to call out each colour. Tap in the same order.</p></div>
-                <div className="recall-slots">{rgb.map((_, i) => <button key={i} className={recall[i] ? "filled" : ""} style={{background: recall[i] === "R" ? "#ff3b45" : recall[i] === "G" ? "#21d990" : recall[i] === "B" ? "#4388ff" : ""}} onClick={() => setRecall((r) => r.filter((_,x) => x !== i))}>{recall[i] || i + 1}</button>)}</div>
-                <div className="colour-controls">{rgb.slice(0,3).map((c) => <button key={c.key} style={{"--color":c.color} as React.CSSProperties} onClick={() => recall.length < 8 && setRecall((r) => [...r,c.key])}><i />{c.key === "R" ? "Red" : c.key === "G" ? "Green" : "Blue"}</button>)}<button onClick={() => setRecall((r) => r.slice(0,-1))}>⌫ Undo</button></div>
-                {recall.length === 8 && <div className={`score-card ${score >= 60 ? "pass" : "fail"}`}><div><small>MATCH SCORE</small><b>{score}%</b></div><span>{score >= 60 ? "✓ Passed · no cognitive penalty" : "Needs penalty · score below 60%"}</span></div>}
-                {recall.length === 8 && score < 60 && <div className="recall-penalty"><label>Cognitive penalty</label><div>{[30,60,90].map(v => <button className={recallPenalty === v ? "active":""} key={v} onClick={() => setRecallPenalty(v)}>+{v}s</button>)}</div></div>}
-                <button className="primary wide" disabled={recall.length < 8 || (score < 60 && recallPenalty === 0)} onClick={() => setScreen("finish")}>Confirm recall & finish <span>→</span></button>
+                <div className="recall-slots" aria-label="Athlete response">{colorSequence.map((_, index) => {
+                  const answer = recall[index];
+                  const choice = answer ? colorChoices[answer] : undefined;
+                  return <button key={index} className={answer ? "filled" : ""} style={choice ? { "--tile-color": choice.color, "--tile-text": choice.textColor } as React.CSSProperties : undefined} aria-label={answer ? `Remove position ${index + 1}, ${choice?.label}` : `Position ${index + 1}, empty`} onClick={() => answer && setRecall((current) => current.filter((_, answerIndex) => answerIndex !== index))}><small>{index + 1}</small><strong>{answer ?? "—"}</strong></button>;
+                })}</div>
+                <div className="colour-controls">{Object.values(colorChoices).map((choice) => <button key={choice.key} style={{"--color":choice.color} as React.CSSProperties} onClick={() => recall.length < sequenceLength && setRecall((current) => [...current, choice.key])}><i />{choice.label} <b>{choice.key}</b></button>)}<button onClick={() => setRecall((current) => current.slice(0,-1))}>⌫ Undo</button></div>
+                {recallComplete && <section className="comparison-panel" aria-live="polite">
+                  <div className="comparison-heading"><div><div className="eyebrow">SEQUENCE REVEAL</div><h3>Position-by-position result</h3></div><div className={`score-summary ${score >= 60 ? "pass" : "fail"}`}><b>{correctCount} / {sequenceLength}</b><span>correct · {score}%</span></div></div>
+                  <div className="comparison-group"><div className="comparison-label"><b>Original sequence</b><span>The sequence shown at the start</span></div><div className="sequence-row compact">{colorSequence.map((colorKey, index) => <SequenceTile key={index} colorKey={colorKey} index={index} />)}</div></div>
+                  <div className="comparison-group"><div className="comparison-label"><b>Athlete response</b><span>Checks show exact positional matches</span></div><div className="sequence-row compact">{recall.map((colorKey, index) => <SequenceTile key={index} colorKey={colorKey} index={index} match={colorKey === colorSequence[index]} />)}</div></div>
+                  <div className={`score-card ${score >= 60 ? "pass" : "fail"}`}><div><small>MATCH SCORE</small><b>{score}%</b></div><span>{score >= 60 ? "✓ Passed · no cognitive penalty" : "Needs penalty · score below 60%"}</span></div>
+                </section>}
+                {recallComplete && score < 60 && <div className="recall-penalty"><label>Cognitive penalty</label><div>{[30,60,90].map(v => <button className={recallPenalty === v ? "active":""} key={v} onClick={() => setRecallPenalty(v)}>+{v}s</button>)}</div></div>}
+                <button className="primary wide" disabled={!recallComplete || (score < 60 && recallPenalty === 0)} onClick={() => setScreen("finish")}>Confirm recall & finish <span>→</span></button>
               </div>
             )}
 
