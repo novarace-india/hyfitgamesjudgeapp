@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hyfit
+      POSTGRES_USER: hyfit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hyfit-local}
+    volumes:
+      - hyfit_postgres:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hyfit -d hyfit"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: .
+    command: npm run db:migrate
+    environment:
+      DATABASE_URL: postgres://hyfit:${POSTGRES_PASSWORD:-hyfit-local}@postgres:5432/hyfit
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://hyfit:${POSTGRES_PASSWORD:-hyfit-local}@postgres:5432/hyfit
+      DATABASE_POOL_SIZE: 30
+      PORT: 4320
+      SESSION_SECRET: ${SESSION_SECRET}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: npm run worker
+    environment:
+      DATABASE_URL: postgres://hyfit:${POSTGRES_PASSWORD:-hyfit-local}@postgres:5432/hyfit
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  hyfit_postgres:
+  caddy_data:
+  caddy_config:

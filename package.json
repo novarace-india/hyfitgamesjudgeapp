@@ -14,10 +14,16 @@
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    ,"db:migrate": "node scripts/migrate.mjs"
+    ,"db:seed": "node scripts/seed-platform.mjs"
+    ,"worker": "node scripts/outbox-worker.mjs"
+    ,"backup": "bash scripts/backup.sh"
   },
   "dependencies": {
+    "@zxing/browser": "0.1.5",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
+    "pg": "^8.22.0",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
@@ -25,6 +31,7 @@
     "@cloudflare/vite-plugin": "1.37.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
+    "@types/pg": "^8.20.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",

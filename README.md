@@ -6,6 +6,13 @@ six-station penalty capture, cognitive recall scoring and a consolidated result.
 
 ## Included
 
+- Local Admin and Event Control dashboard
+- PostgreSQL-backed staff authentication and role-based access
+- Event configuration and versioned RaceResult field mappings
+- Volunteer check-in with BIB, wristband and Transponder1 QR workflow
+- Transactional duplicate-assignment protection
+- Central judge-to-athlete assignment locks
+- Durable RaceResult update outbox and audit history
 - Judge / Volunteer / Mobile ID entry
 - Event selection and participant search
 - Duplicate-assignment warning
@@ -66,6 +73,54 @@ Open the local address printed in Terminal, normally:
 <http://localhost:5173>
 
 Use any value as the Judge ID in this demonstration build.
+
+## Run the local race-operations platform
+
+PostgreSQL 16 is required. Copy `.env.example` to `.env.local`, change the
+passwords/secrets, then:
+
+```bash
+export DATABASE_URL=postgres://hyfit:hyfit-local@127.0.0.1:5432/hyfit
+npm run db:migrate
+npm run db:seed
+npm run build
+PORT=4320 npm start
+```
+
+Run the RaceResult outbox worker in a second terminal after publishing the
+event's RaceResult endpoints:
+
+```bash
+export DATABASE_URL=postgres://hyfit:hyfit-local@127.0.0.1:5432/hyfit
+npm run worker
+```
+
+Local entry points:
+
+- Admin Control: <http://localhost:4320/admin>
+- Volunteer Check-in: <http://localhost:4320/checkin>
+- Judge App: <http://localhost:4320/>
+
+Seeded local accounts use PIN `2468`:
+
+- `ADMIN`
+- `CHECKIN1`
+- `JUDGE1`
+
+Change all bootstrap PINs before a real event.
+
+For the complete Docker deployment, run `docker compose up --build` after
+setting `POSTGRES_PASSWORD` and `SESSION_SECRET`. Caddy exposes
+`https://hyfit.local` using its internal certificate authority. The networking
+team must distribute and trust Caddy's root certificate on field devices before
+mobile camera scanning will work.
+
+Database backup and restore commands:
+
+```bash
+npm run backup
+bash scripts/restore.sh backups/hyfit-YYYYMMDDTHHMMSSZ.dump
+```
 
 ## Production build
 

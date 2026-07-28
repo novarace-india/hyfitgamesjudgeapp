@@ -50,3 +50,14 @@ export function searchParticipants(participants: Participant[], query: string) {
       return rightExact - leftExact;
     });
 }
+
+export function parseScannedBib(value: string) {
+  const bib = value.trim();
+  return /^\d+$/.test(bib) ? bib : null;
+}
+
+export function findParticipantByScannedBib(participants: Participant[], value: string) {
+  const bib = parseScannedBib(value);
+  if (!bib) return null;
+  return participants.find((participant) => participant.bib === bib) ?? null;
+}

@@ -8,7 +8,9 @@ import {
 } from "../app/participant-sync.server.ts";
 import {
   demoParticipants,
+  findParticipantByScannedBib,
   participantInitials,
+  parseScannedBib,
   searchParticipants,
 } from "../app/participants.ts";
 
@@ -72,4 +74,17 @@ test("derives initials and ranks exact BIB matches first", () => {
     "25645",
   );
   assert.equal(matches[0].bib, "25645");
+});
+
+test("accepts only numeric scanned BIB values", () => {
+  assert.equal(parseScannedBib(" 25645 "), "25645");
+  assert.equal(parseScannedBib("0025"), "0025");
+  assert.equal(parseScannedBib("BIB-25645"), null);
+  assert.equal(parseScannedBib("25645\nextra"), null);
+});
+
+test("matches scanned BIBs exactly against cached participants", () => {
+  assert.equal(findParticipantByScannedBib(demoParticipants, "25645")?.name, "Riya Sharma");
+  assert.equal(findParticipantByScannedBib(demoParticipants, "2564"), null);
+  assert.equal(findParticipantByScannedBib(demoParticipants, "A-25645"), null);
 });

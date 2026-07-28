@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { colorChoices, colorSequence, scoreSequence, type ColorKey } from "./cognitive-sequence";
+import QrScanner from "./qr-scanner";
 import {
   penaltyFields,
   stationPenaltyField,
@@ -13,6 +14,8 @@ import {
 } from "./penalties";
 import {
   demoParticipants,
+  findParticipantByScannedBib,
+  parseScannedBib,
   searchParticipants,
   type Participant,
   type ParticipantResponse,
@@ -106,6 +109,7 @@ function SequenceTile({
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("login");
   const [judgeId, setJudgeId] = useState("");
+  const [judgePin, setJudgePin] = useState("");
   const [query, setQuery] = useState("");
   const [participants, setParticipants] = useState<Participant[]>(demoParticipants);
   const [participantSync, setParticipantSync] = useState<ParticipantSync | null>(null);
@@ -121,6 +125,7 @@ export default function Home() {
   const [seconds, setSeconds] = useState(10);
   const [online, setOnline] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  const [showQrScanner, setShowQrScanner] = useState(false);
   const [toast, setToast] = useState("");
   const [penaltyOutbox, setPenaltyOutbox] = useState<PenaltyOperation[]>([]);
   const [penaltyFieldState, setPenaltyFieldState] = useState<Partial<Record<PenaltyField, PenaltyFieldState>>>({});
@@ -240,15 +245,59 @@ export default function Home() {
     window.setTimeout(() => setToast(""), 2200);
   }
 
-  function login() {
+  async function login() {
     if (!judgeId.trim()) return flash("Enter your Judge, Volunteer or Mobile ID");
-    setScreen("event");
+    if (!judgePin.trim()) return flash("Enter your PIN");
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ staffId: judgeId, pin: judgePin, deviceLabel: navigator.userAgent }),
+      });
+      const data = await response.json() as { user?: { role: string }; error?: string };
+      if (!response.ok) return flash(data.error ?? "Sign in failed");
+      if (!data.user || !["judge","event_admin","super_admin"].includes(data.user.role)) return flash("This account is not assigned to judging");
+      setScreen("event");
+    } catch {
+      flash("Local event server is unavailable");
+    }
   }
 
   function chooseAthlete(p: Participant) {
     if (p.status === "On course") return flash("Already assigned. Ask the Control Desk to reassign.");
     setAthlete(p);
     setScreen("brief");
+  }
+
+  const handleQrScan = useCallback(async (value: string) => {
+    try {
+      const response = await fetch(`/api/judge/resolve?code=${encodeURIComponent(value.trim())}`);
+      const data = await response.json() as { participant?: Participant; error?: string };
+      if (!response.ok || !data.participant) return data.error ?? "Wristband could not be resolved";
+      if (data.participant.status === "On course") return `BIB ${data.participant.bib} is already on course. Ask Event Control to reassign.`;
+      setAthlete(data.participant);
+      setShowQrScanner(false);
+      setScreen("brief");
+      return null;
+    } catch {
+      const bib = parseScannedBib(value);
+      const participant = bib ? findParticipantByScannedBib(participants, bib) : null;
+      if (!participant) return "Local server unavailable and this code cannot be matched from the saved roster.";
+      setAthlete(participant); setShowQrScanner(false); setScreen("brief"); return null;
+    }
+  }, [participants]);
+
+  async function claimAthlete() {
+    try {
+      const response = await fetch("/api/judge/claim", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId: athlete.id }),
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) return flash(data.error ?? "Athlete could not be assigned");
+      setScreen("sequence");
+    } catch {
+      flash("Local event server is unavailable");
+    }
   }
 
   function setPenalty(value: number) {
@@ -383,6 +432,24 @@ export default function Home() {
       return;
     }
 
+    try {
+      const finishResponse = await fetch("/api/judge/finish", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ bib: athlete.bib, totalPenalty: total }),
+      });
+      if (!finishResponse.ok) {
+        const data = await finishResponse.json() as { error?: string };
+        setFinalizing(false);
+        flash(data.error ?? "Final Finish could not be locked centrally");
+        return;
+      }
+    } catch {
+      setFinalizing(false);
+      flash("Final Finish is waiting for the local event server");
+      return;
+    }
+
     const completedAt = new Date().toISOString();
     const savedAt = Object.fromEntries(
       penaltyFields.map((fieldName) => [fieldName, penaltyFieldStateRef.current[fieldName]?.savedAt]),
@@ -425,7 +492,7 @@ export default function Home() {
     <main className="app-shell">
       <header className="topbar">
         <button className="brand" onClick={() => screen === "login" || flash("Race is locked while judging")}>
-          <Image className="brand-logo" src="/branding/hyfit-games-logo.png" alt="HYFIT Games — Run. Lift. Live." width={68} height={68} priority />
+          <Image className="brand-logo" src="/branding/hyfit-games-logo.png" alt="HYFIT Games — Run. Lift. Live." width={68} height={68} priority unoptimized />
           <span><b>HYFIT GAMES</b><small>JUDGE APP</small></span>
         </button>
         {screen !== "login" && (
@@ -455,10 +522,15 @@ export default function Home() {
             <label>JUDGE / VOLUNTEER / MOBILE ID</label>
             <div className="field">
               <span>⌁</span>
-              <input value={judgeId} onChange={(e) => setJudgeId(e.target.value)} onKeyDown={(e) => e.key === "Enter" && login()} placeholder="e.g. J-1042 or mobile number" autoFocus />
+              <input value={judgeId} onChange={(e) => setJudgeId(e.target.value)} placeholder="e.g. JUDGE1" autoFocus />
             </div>
-            <button className="primary" onClick={login}>Continue <span>→</span></button>
-            <div className="demo-note">Demo access: enter any ID</div>
+            <label>SECURE PIN</label>
+            <div className="field">
+              <span>••</span>
+              <input type="password" inputMode="numeric" value={judgePin} onChange={(e) => setJudgePin(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void login()} placeholder="4–8 digit PIN" />
+            </div>
+            <button className="primary" onClick={() => void login()}>Continue <span>→</span></button>
+            <div className="demo-note">Local demo: JUDGE1 / 2468</div>
             <button className="text-btn" onClick={() => setShowHelp(true)}>Can’t access your account?</button>
           </div>
         </section>
@@ -484,7 +556,7 @@ export default function Home() {
                 <div className="event-grid">
                   <button className="event-card featured" onClick={() => setScreen("search")}>
                     <div className="event-top"><span>LIVE</span><i>Open</i></div>
-                    <Image className="event-logo" src="/branding/hyfit-games-logo.png" alt="HYFIT Games — Run. Lift. Live." width={112} height={112} />
+                    <Image className="event-logo" src="/branding/hyfit-games-logo.png" alt="HYFIT Games — Run. Lift. Live." width={112} height={112} unoptimized />
                     <h3>HYFIT Games Bengaluru</h3>
                     <p>Hall A · Manpho Convention Centre</p>
                     <div className="event-stats"><span><b>4,982</b> Athletes</span><span><b>24</b> Active waves</span></div>
@@ -492,7 +564,7 @@ export default function Home() {
                   </button>
                   <div className="event-card muted">
                     <div className="event-top"><span className="later">UP NEXT</span><i>Tomorrow</i></div>
-                    <Image className="event-logo ghost" src="/branding/hyfit-games-logo.png" alt="HYFIT Games — Run. Lift. Live." width={112} height={112} /><h3>HYFIT Games Bengaluru</h3><p>Day 2 · Starts 07:00</p>
+                    <Image className="event-logo ghost" src="/branding/hyfit-games-logo.png" alt="HYFIT Games — Run. Lift. Live." width={112} height={112} unoptimized /><h3>HYFIT Games Bengaluru</h3><p>Day 2 · Starts 07:00</p>
                     <div className="event-cta disabled">Available tomorrow</div>
                   </div>
                 </div>
@@ -504,7 +576,10 @@ export default function Home() {
               <>
                 <button className="back" onClick={() => setScreen("event")}>← All events</button>
                 <div className="page-heading compact"><div><div className="eyebrow">HYFIT GAMES · DAY 1</div><h2>Find your athlete</h2><p>Search by BIB or participant name, then verify before pairing.</p></div><div className="assignment"><b>Judge station</b><span>Mobile · Athlete follow</span></div></div>
-                <div className="search-box"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search BIB or participant name…" autoFocus/><kbd>⌘ K</kbd></div>
+                <div className="participant-search-actions">
+                  <div className="search-box"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search BIB or participant name…" autoFocus/><kbd>⌘ K</kbd></div>
+                  <button className="scan-qr-btn" onClick={() => setShowQrScanner(true)}><span aria-hidden="true">▦</span><b>Scan wristband QR</b><small>Numeric BIB only</small></button>
+                </div>
                 <div className={`participant-sync ${participantSync?.stale || participantSyncError ? "stale" : ""}`}>
                   <div><span className={participantSync?.stale || participantSyncError ? "amber-dot" : "live-dot"} /><b>{participantSyncError || (participantSync?.source === "demo" ? "Demo participants" : participantSync?.stale ? "Saved participant snapshot" : "Live participants")}</b><small>{participantSync ? `Last synced ${new Date(participantSync.fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${participants.length} athletes${participantSync.rejectedCount ? ` · ${participantSync.rejectedCount} rejected` : ""}` : "Preparing participant data…"}</small></div>
                   <button disabled={syncingParticipants} onClick={() => void refreshParticipants(true)}>{syncingParticipants ? "Syncing…" : "↻ Sync now"}</button>
@@ -526,7 +601,7 @@ export default function Home() {
                   <div className="verify-top"><span className="avatar large">{athlete.avatar}</span><div><div className="eyebrow">VERIFY WITH ATHLETE</div><h2>{athlete.name}</h2><p>{athlete.category} · {athlete.wave}</p></div><div className="big-bib"><small>BIB</small>{athlete.bib}</div></div>
                   <div className="checks"><span>✓ Name confirmed</span><span>✓ BIB visible & matches</span><span>✓ Athlete ready</span></div>
                   <div className="warning"><b>One judge · one athlete</b><span>This assignment locks when you start the sequence. Reassignment needs Control Desk approval.</span></div>
-                  <button className="primary" onClick={() => setScreen("sequence")}>Pair & begin cognitive sequence <span>→</span></button>
+                  <button className="primary" onClick={() => void claimAthlete()}>Pair & begin cognitive sequence <span>→</span></button>
                 </div>
               </div>
             )}
@@ -625,6 +700,7 @@ export default function Home() {
       )}
 
       {showHelp && <div className="modal-backdrop" onClick={() => setShowHelp(false)}><div className="help-modal" onClick={(e) => e.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}>×</button><div className="help-icon">!</div><h3>Field support</h3><p>Never abandon an active athlete. Your entries auto-save on this device, even without internet.</p><div className="help-options"><button onClick={() => flash("Control Desk alerted")}>Alert Control Desk <span>High priority →</span></button><button onClick={() => flash("Offline recovery check complete")}>Recover active race <span>From this device →</span></button><button onClick={() => flash("Incident reference created")}>Report device issue <span>Creates audit record →</span></button></div><small>Emergency fallback: note the BIB, station and penalty on the printed judge card.</small></div></div>}
+      {showQrScanner && <QrScanner onClose={() => setShowQrScanner(false)} onScan={handleQrScan} />}
       {toast && <div className="toast">✓ {toast}</div>}
     </main>
   );

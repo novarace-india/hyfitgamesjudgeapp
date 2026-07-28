@@ -33,5 +33,7 @@ test("renders development preview metadata", async () => {
   assert.match(html, developmentPreviewMeta);
   assert.match(html, /HYFIT Games Judge App/);
   assert.match(html, /HYFIT Games — Run\. Lift\. Live\./);
+  assert.match(html, /src=["']\/branding\/hyfit-games-logo\.png["']/);
+  assert.doesNotMatch(html, /_vinext\/image\?url=.*hyfit-games-logo/i);
   assert.doesNotMatch(html, /HYVEFIT/i);
 });
