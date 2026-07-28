@@ -8,9 +8,9 @@ export const metadata: Metadata = {
     "codex-preview": "development",
   },
   icons: {
-    icon: "/hyfit-games-icon.png",
-    shortcut: "/hyfit-games-icon.png",
-    apple: "/hyfit-games-icon.png",
+    icon: "/branding/hyfit-games-logo.png",
+    shortcut: "/branding/hyfit-games-logo.png",
+    apple: "/branding/hyfit-games-logo.png",
   },
 };
 
