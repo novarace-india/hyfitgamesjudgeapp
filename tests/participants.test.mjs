@@ -13,6 +13,11 @@ import {
   parseScannedBib,
   searchParticipants,
 } from "../app/participants.ts";
+import {
+  classifyParticipantImport,
+  parseParticipantImport,
+  participantFieldConfig,
+} from "../lib/participant-import.ts";
 
 const config = {
   listPath: "data.entries",
@@ -87,4 +92,50 @@ test("matches scanned BIBs exactly against cached participants", () => {
   assert.equal(findParticipantByScannedBib(demoParticipants, "25645")?.name, "Riya Sharma");
   assert.equal(findParticipantByScannedBib(demoParticipants, "2564"), null);
   assert.equal(findParticipantByScannedBib(demoParticipants, "A-25645"), null);
+});
+
+test("supports concise and explicit Admin participant mapping keys", () => {
+  assert.deepEqual(
+    participantFieldConfig({ listPath: "data.rows", bib: "Bib", name: "FullName" }),
+    {
+      listPath: "data.rows",
+      bibField: "Bib",
+      nameField: "FullName",
+      categoryField: "category",
+      waveField: "wave",
+      statusField: "status",
+      idField: "id",
+    },
+  );
+  assert.equal(participantFieldConfig({ bibField: "bibNo" }).bibField, "bibNo");
+});
+
+test("classifies inserted, updated, and unchanged participant imports", () => {
+  const existing = new Map([
+    ["1", { name: "Same", category: "Open", wave: "W1", sourceId: "p1" }],
+    ["2", { name: "Old name", category: "Open", wave: "W1", sourceId: "p2" }],
+  ]);
+  assert.deepEqual(
+    classifyParticipantImport(existing, [
+      { bib: "1", name: "Same", category: "Open", wave: "W1", id: "p1" },
+      { bib: "2", name: "New name", category: "Open", wave: "W1", id: "p2" },
+      { bib: "3", name: "New", category: "Pro", wave: "W2", id: "p3" },
+    ]),
+    { inserted: 1, updated: 1, unchanged: 1 },
+  );
+});
+
+test("recognizes RaceResult capitalized fields and composes participant names", () => {
+  const result = parseParticipantImport(
+    [
+      { Bib: 25645, "First Name": "Riya", Lastname: "Sharma", Contest: "Female Open" },
+      { Bib: 25646, "First Name": "Rishabh", Lastname: "Shah", Contest: "Male Open" },
+    ],
+    { listPath: "", bib: "bib", name: "name" },
+  );
+  assert.equal(result.rejectedCount, 0);
+  assert.deepEqual(result.participants.map(({ bib, name, category }) => ({ bib, name, category })), [
+    { bib: "25645", name: "Riya Sharma", category: "Female Open" },
+    { bib: "25646", name: "Rishabh Shah", category: "Male Open" },
+  ]);
 });
