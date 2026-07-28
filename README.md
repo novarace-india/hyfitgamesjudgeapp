@@ -89,6 +89,43 @@ automatically listens on Railway's injected `PORT` and binds to `0.0.0.0`.
 Configuration in `railway.json` overrides conflicting build or deploy settings
 in the Railway dashboard.
 
+### Live participant API
+
+The app uses numeric demo BIBs until `PARTICIPANT_API_URL` is configured. To
+enable the open RaceResult participant feed, add these variables centrally to
+the Railway service:
+
+```text
+PARTICIPANT_API_URL=https://example.com/live-participants
+PARTICIPANT_LIST_PATH=data.participants
+PARTICIPANT_BIB_FIELD=bib
+PARTICIPANT_NAME_FIELD=name
+PARTICIPANT_CATEGORY_FIELD=category
+PARTICIPANT_WAVE_FIELD=wave
+PARTICIPANT_STATUS_FIELD=status
+PARTICIPANT_ID_FIELD=id
+PARTICIPANT_SYNC_INTERVAL_MS=60000
+```
+
+Field values support dot paths for nested source records. Leave
+`PARTICIPANT_LIST_PATH` empty when the API response itself is the participant
+array. The server refreshes the source at most once per interval; judge devices
+also retain the last successful snapshot for offline search.
+
+### RaceResult penalty updates
+
+Configure the complete RaceResult custom API endpoint centrally:
+
+```text
+RACERESULT_UPDATE_API_URL=https://api.raceresult.com/386828/YOUR_API_KEY
+```
+
+The server POSTs exact values to `station1penalty` through
+`station6penalty` and `cognitiveskillpenalty`, always with `nohistory=0`.
+Without this variable, local development runs in clearly identified demo mode.
+Pending updates remain in a device-local retry queue, and Final Finish remains
+locked until RaceResult confirms every field.
+
 For Railway configuration details, see the official
 [Config as Code](https://docs.railway.com/config-as-code) and
 [Application Failed to Respond](https://docs.railway.com/networking/troubleshooting/application-failed-to-respond)

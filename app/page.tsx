@@ -1,8 +1,23 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { colorChoices, colorSequence, scoreSequence, type ColorKey } from "./cognitive-sequence";
+import {
+  penaltyFields,
+  stationPenaltyField,
+  upsertPenaltyOperation,
+  type PenaltyField,
+  type PenaltyFieldState,
+  type PenaltyOperation,
+} from "./penalties";
+import {
+  demoParticipants,
+  searchParticipants,
+  type Participant,
+  type ParticipantResponse,
+  type ParticipantSync,
+} from "./participants";
 
 type Screen =
   | "login"
@@ -12,16 +27,8 @@ type Screen =
   | "sequence"
   | "race"
   | "recall"
-  | "finish";
-
-type Participant = {
-  bib: string;
-  name: string;
-  category: string;
-  wave: string;
-  avatar: string;
-  status: "Ready" | "On course";
-};
+  | "finish"
+  | "history";
 
 const stations = [
   "Dumbbell Step-Ups",
@@ -32,15 +39,42 @@ const stations = [
   "Tyre Flips",
 ];
 
-const participants: Participant[] = [
-  { bib: "A-1842", name: "Riya Sharma", category: "Female Open", wave: "Wave 12 · 09:40", avatar: "RS", status: "Ready" },
-  { bib: "A-1847", name: "Rishabh Shah", category: "Male Open", wave: "Wave 12 · 09:40", avatar: "RS", status: "Ready" },
-  { bib: "B-2419", name: "Arjun Menon", category: "Male Pro", wave: "Wave 14 · 10:20", avatar: "AM", status: "Ready" },
-  { bib: "D-0916", name: "Meera & Tara", category: "Female Doubles", wave: "Wave 08 · 08:20", avatar: "MT", status: "On course" },
-  { bib: "N-0341", name: "Aarav Rao", category: "NextGen Boys", wave: "Wave 03 · 16:30", avatar: "AR", status: "Ready" },
-];
-
 const sequenceLength = colorSequence.length;
+const participantSnapshotKey = "hyfit-games-participant-snapshot-v1";
+const penaltyOutboxKey = "hyfit-games-penalty-outbox-v1";
+const judgedAthletesKey = "hyfit-games-judged-athletes-v1";
+
+type JudgedAthlete = {
+  id: string;
+  judgeId: string;
+  athlete: Participant;
+  completedAt: string;
+  penalties: number[];
+  notes: string[];
+  cognitiveScore: number;
+  cognitivePenalty: number;
+  totalPenalty: number;
+  savedAt: Partial<Record<PenaltyField, string>>;
+};
+
+function operationId() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function loadParticipantSnapshot(): ParticipantResponse | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const saved = localStorage.getItem(participantSnapshotKey);
+    if (!saved) return null;
+    const snapshot = JSON.parse(saved) as ParticipantResponse;
+    return Array.isArray(snapshot.participants) && snapshot.participants.length && snapshot.sync
+      ? snapshot
+      : null;
+  } catch {
+    localStorage.removeItem(participantSnapshotKey);
+    return null;
+  }
+}
 
 const stepLabels = ["Start", ...stations, "Recall", "Finish"];
 
@@ -73,8 +107,13 @@ export default function Home() {
   const [screen, setScreen] = useState<Screen>("login");
   const [judgeId, setJudgeId] = useState("");
   const [query, setQuery] = useState("");
-  const [athlete, setAthlete] = useState<Participant>(participants[0]);
+  const [participants, setParticipants] = useState<Participant[]>(demoParticipants);
+  const [participantSync, setParticipantSync] = useState<ParticipantSync | null>(null);
+  const [syncingParticipants, setSyncingParticipants] = useState(false);
+  const [participantSyncError, setParticipantSyncError] = useState("");
+  const [athlete, setAthlete] = useState<Participant>(demoParticipants[0]);
   const [station, setStation] = useState(0);
+  const [furthestStation, setFurthestStation] = useState(0);
   const [penalties, setPenalties] = useState<number[]>(Array(6).fill(0));
   const [notes, setNotes] = useState<string[]>(Array(6).fill(""));
   const [recall, setRecall] = useState<ColorKey[]>([]);
@@ -83,6 +122,15 @@ export default function Home() {
   const [online, setOnline] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const [toast, setToast] = useState("");
+  const [penaltyOutbox, setPenaltyOutbox] = useState<PenaltyOperation[]>([]);
+  const [penaltyFieldState, setPenaltyFieldState] = useState<Partial<Record<PenaltyField, PenaltyFieldState>>>({});
+  const [judgedAthletes, setJudgedAthletes] = useState<JudgedAthlete[]>([]);
+  const [selectedHistory, setSelectedHistory] = useState<JudgedAthlete | null>(null);
+  const [historyReturnScreen, setHistoryReturnScreen] = useState<Screen>("event");
+  const [finalizing, setFinalizing] = useState(false);
+  const [returnToRecall, setReturnToRecall] = useState(false);
+  const penaltyOutboxRef = useRef(penaltyOutbox);
+  const penaltyFieldStateRef = useRef(penaltyFieldState);
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
@@ -95,6 +143,44 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const restoreSnapshot = window.setTimeout(() => {
+      const snapshot = loadParticipantSnapshot();
+      if (!snapshot) return;
+      setParticipants(snapshot.participants);
+      setParticipantSync({ ...snapshot.sync, source: "device", stale: true });
+    }, 0);
+    return () => window.clearTimeout(restoreSnapshot);
+  }, []);
+
+  useEffect(() => {
+    const restorePenaltyData = window.setTimeout(() => {
+      try {
+        const savedOutbox = JSON.parse(localStorage.getItem(penaltyOutboxKey) ?? "[]") as PenaltyOperation[];
+        const savedHistory = JSON.parse(localStorage.getItem(judgedAthletesKey) ?? "[]") as JudgedAthlete[];
+        if (Array.isArray(savedOutbox)) setPenaltyOutbox(savedOutbox);
+        if (Array.isArray(savedHistory)) setJudgedAthletes(savedHistory);
+      } catch {
+        localStorage.removeItem(penaltyOutboxKey);
+        localStorage.removeItem(judgedAthletesKey);
+      }
+    }, 0);
+    return () => window.clearTimeout(restorePenaltyData);
+  }, []);
+
+  useEffect(() => {
+    penaltyOutboxRef.current = penaltyOutbox;
+    localStorage.setItem(penaltyOutboxKey, JSON.stringify(penaltyOutbox));
+  }, [penaltyOutbox]);
+
+  useEffect(() => {
+    penaltyFieldStateRef.current = penaltyFieldState;
+  }, [penaltyFieldState]);
+
+  useEffect(() => {
+    localStorage.setItem(judgedAthletesKey, JSON.stringify(judgedAthletes));
+  }, [judgedAthletes]);
+
+  useEffect(() => {
     if (screen !== "sequence" || seconds <= 0) return;
     const t = window.setTimeout(() => setSeconds((s) => s - 1), 1000);
     return () => window.clearTimeout(t);
@@ -104,14 +190,45 @@ export default function Home() {
     if (!["race", "recall", "finish"].includes(screen)) return;
     localStorage.setItem(
       "hyfit-games-active-race",
-      JSON.stringify({ athlete, station, penalties, notes, recall, recallPenalty, updatedAt: Date.now() }),
+      JSON.stringify({ athlete, station, furthestStation, penalties, notes, recall, recallPenalty, penaltyFieldState, updatedAt: Date.now() }),
     );
-  }, [athlete, station, penalties, notes, recall, recallPenalty, screen]);
+  }, [athlete, station, furthestStation, penalties, notes, recall, recallPenalty, penaltyFieldState, screen]);
 
-  const filtered = useMemo(() => {
-    const q = query.toLowerCase().trim();
-    return q ? participants.filter((p) => `${p.name} ${p.bib}`.toLowerCase().includes(q)) : participants.slice(0, 3);
-  }, [query]);
+  const refreshParticipants = useCallback(async (forceRefresh = false) => {
+    setSyncingParticipants(true);
+    setParticipantSyncError("");
+    try {
+      const response = await fetch(`/api/participants${forceRefresh ? "?refresh=1" : ""}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`Participant sync failed with HTTP ${response.status}`);
+      const snapshot = await response.json() as ParticipantResponse;
+      if (!Array.isArray(snapshot.participants) || !snapshot.sync) throw new Error("Invalid participant response");
+      setParticipants(snapshot.participants);
+      setParticipantSync(snapshot.sync);
+      localStorage.setItem(participantSnapshotKey, JSON.stringify(snapshot));
+    } catch {
+      setParticipantSyncError("Sync unavailable · using last saved participants");
+      setParticipantSync((current) => current ? { ...current, stale: true } : null);
+    } finally {
+      setSyncingParticipants(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (screen !== "search") return;
+    const initialRefresh = window.setTimeout(() => void refreshParticipants(), 0);
+    const interval = window.setInterval(() => void refreshParticipants(), 60000);
+    return () => {
+      window.clearTimeout(initialRefresh);
+      window.clearInterval(interval);
+    };
+  }, [refreshParticipants, screen]);
+
+  const filtered = useMemo(
+    () => searchParticipants(participants, query),
+    [participants, query],
+  );
 
   const { correctCount, percentage: score } = useMemo(() => scoreSequence(recall), [recall]);
   const recallComplete = recall.length === sequenceLength;
@@ -136,11 +253,155 @@ export default function Home() {
 
   function setPenalty(value: number) {
     setPenalties((current) => current.map((p, i) => (i === station ? value : p)));
+    const fieldName = stationPenaltyField(station);
+    setPenaltyFieldState((current) => ({
+      ...current,
+      [fieldName]: { value, status: "draft" },
+    }));
   }
 
+  const submitPenaltyOperation = useCallback(async (operation: PenaltyOperation) => {
+    try {
+      const response = await fetch("/api/penalties", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(operation),
+      });
+      if (!response.ok) throw new Error(`Penalty update failed with HTTP ${response.status}`);
+      const saved = await response.json() as { operationId: string; savedAt: string };
+      const isCurrent = penaltyOutboxRef.current.some((item) => item.operationId === saved.operationId);
+      if (!isCurrent) return true;
+
+      setPenaltyOutbox((current) => {
+        const next = current.filter((item) => item.operationId !== saved.operationId);
+        penaltyOutboxRef.current = next;
+        return next;
+      });
+      setPenaltyFieldState((current) => {
+        const next = {
+          ...current,
+          [operation.fieldName]: { value: operation.value, status: "saved" as const, savedAt: saved.savedAt },
+        };
+        penaltyFieldStateRef.current = next;
+        return next;
+      });
+      return true;
+    } catch {
+      setPenaltyOutbox((current) => {
+        const next = current.map((item) => item.operationId === operation.operationId
+          ? { ...item, attemptCount: item.attemptCount + 1, lastError: "Sync failed" }
+          : item);
+        penaltyOutboxRef.current = next;
+        return next;
+      });
+      setPenaltyFieldState((current) => {
+        const currentField = current[operation.fieldName];
+        if (currentField?.value !== operation.value) return current;
+        const next = {
+          ...current,
+          [operation.fieldName]: { value: operation.value, status: "failed" as const },
+        };
+        penaltyFieldStateRef.current = next;
+        return next;
+      });
+      return false;
+    }
+  }, []);
+
+  const savePenaltyValue = useCallback((fieldName: PenaltyField, value: number) => {
+    const operation: PenaltyOperation = {
+      operationId: operationId(),
+      bib: athlete.bib,
+      fieldName,
+      value,
+      createdAt: new Date().toISOString(),
+      attemptCount: 0,
+    };
+    setPenaltyOutbox((current) => {
+      const next = upsertPenaltyOperation(current, operation);
+      penaltyOutboxRef.current = next;
+      return next;
+    });
+    setPenaltyFieldState((current) => {
+      const next = { ...current, [fieldName]: { value, status: "pending" as const } };
+      penaltyFieldStateRef.current = next;
+      return next;
+    });
+    return submitPenaltyOperation(operation);
+  }, [athlete.bib, submitPenaltyOperation]);
+
+  const retryPenaltyOutbox = useCallback(async () => {
+    const pending = [...penaltyOutboxRef.current];
+    if (!pending.length) return;
+    await Promise.all(pending.map((operation) => submitPenaltyOperation(operation)));
+  }, [submitPenaltyOperation]);
+
+  useEffect(() => {
+    const retry = () => void retryPenaltyOutbox();
+    window.addEventListener("online", retry);
+    const interval = window.setInterval(retry, 15000);
+    return () => {
+      window.removeEventListener("online", retry);
+      window.clearInterval(interval);
+    };
+  }, [retryPenaltyOutbox]);
+
   function nextStation() {
-    if (station < 5) setStation((s) => s + 1);
-    else setScreen("recall");
+    const savedStation = station;
+    void savePenaltyValue(stationPenaltyField(savedStation), penalties[savedStation]);
+    if (returnToRecall) {
+      setReturnToRecall(false);
+      setScreen("recall");
+      return;
+    }
+    if (savedStation < 5) {
+      const nextFurthest = Math.max(furthestStation, savedStation + 1);
+      setFurthestStation(nextFurthest);
+      setStation(savedStation < furthestStation ? furthestStation : savedStation + 1);
+    } else {
+      setScreen("recall");
+    }
+  }
+
+  function revokeCurrentPenalty() {
+    const savedStation = station;
+    setPenalties((current) => current.map((value, index) => index === savedStation ? 0 : value));
+    void savePenaltyValue(stationPenaltyField(savedStation), 0);
+    flash(`Station ${savedStation + 1} penalty revoked · syncing value 0`);
+  }
+
+  async function finishRecall() {
+    setFinalizing(true);
+    const cognitiveSaved = await savePenaltyValue("cognitiveskillpenalty", recallPenalty);
+    await retryPenaltyOutbox();
+    const allSaved = penaltyFields.every(
+      (fieldName) => penaltyFieldStateRef.current[fieldName]?.status === "saved",
+    );
+    if (!cognitiveSaved || !allSaved) {
+      setFinalizing(false);
+      flash("Final Finish is waiting for all RaceResult updates · retry pending fields");
+      return;
+    }
+
+    const completedAt = new Date().toISOString();
+    const savedAt = Object.fromEntries(
+      penaltyFields.map((fieldName) => [fieldName, penaltyFieldStateRef.current[fieldName]?.savedAt]),
+    ) as Partial<Record<PenaltyField, string>>;
+    const completed: JudgedAthlete = {
+      id: `${athlete.id}-${completedAt}`,
+      judgeId,
+      athlete,
+      completedAt,
+      penalties,
+      notes,
+      cognitiveScore: score,
+      cognitivePenalty: recallPenalty,
+      totalPenalty: total,
+      savedAt,
+    };
+    setJudgedAthletes((current) => [completed, ...current]);
+    setScreen("finish");
+    setFinalizing(false);
   }
 
   function resetDemo() {
@@ -149,10 +410,14 @@ export default function Home() {
     setJudgeId("");
     setQuery("");
     setStation(0);
+    setFurthestStation(0);
     setPenalties(Array(6).fill(0));
     setNotes(Array(6).fill(""));
     setRecall([]);
     setRecallPenalty(0);
+    setPenaltyFieldState({});
+    penaltyFieldStateRef.current = {};
+    setReturnToRecall(false);
     setSeconds(10);
   }
 
@@ -205,8 +470,9 @@ export default function Home() {
             <div className="judge-chip"><span>AL</span><div><b>Arul Lakshmanan</b><small>{judgeId.toUpperCase()} · Floor Judge</small></div></div>
             <nav>
               <button className={screen === "event" ? "active" : ""}>⌂ <span>Events</span></button>
-              <button className={["search","brief","sequence","race","recall","finish"].includes(screen) ? "active" : ""}>◎ <span>Active race</span></button>
-              <button onClick={() => flash("No pending drafts on this device")}>↻ <span>Saved drafts</span><i>0</i></button>
+              <button className={["search","brief","sequence","race","recall","finish"].includes(screen) ? "active" : ""} onClick={() => screen === "history" && setScreen(historyReturnScreen)}>◎ <span>Active race</span></button>
+              <button className={screen === "history" ? "active" : ""} onClick={() => { if (screen !== "history") setHistoryReturnScreen(screen); setSelectedHistory(null); setScreen("history"); }}>✓ <span>Judged athletes</span><i>{judgedAthletes.length}</i></button>
+              <button onClick={() => void retryPenaltyOutbox()}>↻ <span>Pending sync</span><i>{penaltyOutbox.length}</i></button>
             </nav>
             <div className="side-status"><span className={online ? "live-dot" : "amber-dot"} /><div><b>{online ? "All systems normal" : "Offline mode active"}</b><small>{online ? "Last sync just now" : "Changes stay on this device"}</small></div></div>
           </aside>
@@ -239,6 +505,10 @@ export default function Home() {
                 <button className="back" onClick={() => setScreen("event")}>← All events</button>
                 <div className="page-heading compact"><div><div className="eyebrow">HYFIT GAMES · DAY 1</div><h2>Find your athlete</h2><p>Search by BIB or participant name, then verify before pairing.</p></div><div className="assignment"><b>Judge station</b><span>Mobile · Athlete follow</span></div></div>
                 <div className="search-box"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search BIB or participant name…" autoFocus/><kbd>⌘ K</kbd></div>
+                <div className={`participant-sync ${participantSync?.stale || participantSyncError ? "stale" : ""}`}>
+                  <div><span className={participantSync?.stale || participantSyncError ? "amber-dot" : "live-dot"} /><b>{participantSyncError || (participantSync?.source === "demo" ? "Demo participants" : participantSync?.stale ? "Saved participant snapshot" : "Live participants")}</b><small>{participantSync ? `Last synced ${new Date(participantSync.fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${participants.length} athletes${participantSync.rejectedCount ? ` · ${participantSync.rejectedCount} rejected` : ""}` : "Preparing participant data…"}</small></div>
+                  <button disabled={syncingParticipants} onClick={() => void refreshParticipants(true)}>{syncingParticipants ? "Syncing…" : "↻ Sync now"}</button>
+                </div>
                 <div className="result-head"><span>{query ? `${filtered.length} MATCHES` : "UPCOMING IN YOUR WAVE"}</span><small>Tap a participant to verify</small></div>
                 <div className="athlete-list">
                   {filtered.map((p) => <button key={p.bib} className="athlete-row" onClick={() => chooseAthlete(p)}>
@@ -278,10 +548,16 @@ export default function Home() {
                   <div><div className="eyebrow">ATHLETE ON COURSE</div><h2>{athlete.name} <span>{athlete.bib}</span></h2></div>
                   <div className="race-total"><small>TOTAL PENALTY</small><b>+{stationTotal}s</b></div>
                 </div>
-                <div className="progress">{stepLabels.map((s, i) => <div key={s} className={i === station + 1 ? "current" : i <= station ? "done" : ""}><i>{i <= station ? "✓" : i}</i><span>{s}</span></div>)}</div>
+                <div className="progress">{stepLabels.map((label, index) => {
+                  const stationIndex = index - 1;
+                  const accessible = index >= 1 && index <= 6 && stationIndex <= furthestStation;
+                  const current = index === station + 1;
+                  const done = index === 0 || (index >= 1 && index <= 6 && stationIndex < furthestStation);
+                  return <button key={label} className={current ? "current" : done ? "done" : ""} disabled={!accessible} onClick={() => accessible && setStation(stationIndex)}><i>{done && !current ? "✓" : index}</i><span>{label}</span></button>;
+                })}</div>
                 <div className="station-layout">
                   <div className="station-card">
-                    <div className="station-number">STATION {station + 1} OF 6</div>
+                    <div className="station-number">STATION {station + 1} OF 6 <span className={`field-sync ${penaltyFieldState[stationPenaltyField(station)]?.status ?? "draft"}`}>{penaltyFieldState[stationPenaltyField(station)]?.status === "saved" ? "✓ Saved" : penaltyFieldState[stationPenaltyField(station)]?.status === "pending" ? "↻ Pending sync" : penaltyFieldState[stationPenaltyField(station)]?.status === "failed" ? "! Failed · queued" : "Draft"}</span></div>
                     <h3>{stations[station]}</h3>
                     <p>200 m run completed · Observe the full movement standard.</p>
                     <div className="quick-label"><b>Penalty</b><span>Add seconds only for an observed violation</span></div>
@@ -289,7 +565,8 @@ export default function Home() {
                     <div className="custom-penalty"><label>Custom seconds</label><input type="number" min="0" max="300" value={penalties[station]} onChange={(e) => setPenalty(Math.max(0, Number(e.target.value)))} /></div>
                     <label className="notes-label">Judge note <small>Optional · useful for reviews</small></label>
                     <textarea value={notes[station]} onChange={(e) => setNotes((n) => n.map((x,i) => i === station ? e.target.value : x))} placeholder="e.g. 2 incomplete reps after warning…" />
-                    <button className="primary" onClick={nextStation}>Save & {station === 5 ? "begin recall" : "continue to 200 m run"} <span>→</span></button>
+                    {penalties[station] > 0 && <button className="revoke-btn" onClick={revokeCurrentPenalty}>Revoke penalty · save 0 seconds</button>}
+                    <button className="primary" onClick={nextStation}>Save & {returnToRecall ? "return to cognitive recall" : station === 5 ? "begin recall" : station < furthestStation ? `return to station ${furthestStation + 1}` : "continue to 200 m run"} <span>→</span></button>
                   </div>
                   <aside className="standard-card"><div className="standard-icon">◎</div><h4>Movement standard</h4><p>Watch for complete range of motion, correct load and station boundary.</p><ul><li>Give one clear verbal warning</li><li>Apply only published penalties</li><li>Use a note for disputed calls</li></ul><button onClick={() => setShowHelp(true)}>View station rules</button></aside>
                 </div>
@@ -299,6 +576,7 @@ export default function Home() {
             {screen === "recall" && (
               <div className="recall-wrap">
                 <div className="race-meta"><span>{athlete.bib} · {athlete.name}</span><b>COGNITIVE RECALL</b></div>
+                <div className="station-review"><span>Review station penalties</span><div>{stations.map((_, index) => <button key={index} onClick={() => { setStation(index); setReturnToRecall(true); setScreen("race"); }}>{index + 1}<small>+{penalties[index]}s</small></button>)}</div></div>
                 <div className="sequence-head"><div className="eyebrow">FINAL CHALLENGE</div><h2>Recreate the colour order</h2><p>Ask the athlete to call out each colour. Tap in the same order.</p></div>
                 <div className="recall-slots" aria-label="Athlete response">{colorSequence.map((_, index) => {
                   const answer = recall[index];
@@ -313,7 +591,21 @@ export default function Home() {
                   <div className={`score-card ${score >= 60 ? "pass" : "fail"}`}><div><small>MATCH SCORE</small><b>{score}%</b></div><span>{score >= 60 ? "✓ Passed · no cognitive penalty" : "Needs penalty · score below 60%"}</span></div>
                 </section>}
                 {recallComplete && score < 60 && <div className="recall-penalty"><label>Cognitive penalty</label><div>{[30,60,90].map(v => <button className={recallPenalty === v ? "active":""} key={v} onClick={() => setRecallPenalty(v)}>+{v}s</button>)}</div></div>}
-                <button className="primary wide" disabled={!recallComplete || (score < 60 && recallPenalty === 0)} onClick={() => setScreen("finish")}>Confirm recall & finish <span>→</span></button>
+                {!!penaltyOutbox.length && <div className="sync-warning"><div><b>{penaltyOutbox.length} RaceResult update{penaltyOutbox.length === 1 ? "" : "s"} pending</b><span>Final Finish unlocks after every field is saved.</span></div><button onClick={() => void retryPenaltyOutbox()}>Retry now</button></div>}
+                <button className="primary wide" disabled={finalizing || !recallComplete || (score < 60 && recallPenalty === 0)} onClick={() => void finishRecall()}>{finalizing ? "Syncing final result…" : "Confirm recall & Final Finish"} <span>→</span></button>
+              </div>
+            )}
+
+            {screen === "history" && (
+              <div className="history-wrap">
+                <button className="back" onClick={() => { setSelectedHistory(null); setScreen(historyReturnScreen); }}>← Back</button>
+                <div className="page-heading compact"><div><div className="eyebrow">READ-ONLY HISTORY</div><h2>Judged athletes</h2><p>Completed results saved on this device. Final penalties cannot be edited.</p></div></div>
+                {selectedHistory ? <div className="history-detail">
+                  <button className="back" onClick={() => setSelectedHistory(null)}>← All judged athletes</button>
+                  <div className="result-athlete"><span className="avatar large">{selectedHistory.athlete.avatar}</span><div><b>{selectedHistory.athlete.name}</b><span>BIB {selectedHistory.athlete.bib} · {selectedHistory.athlete.category}</span></div><div className="history-lock">🔒 READ ONLY</div></div>
+                  <div className="history-penalties">{selectedHistory.penalties.map((value, index) => <div key={index}><span>Station {index + 1} · {stations[index]}</span><b>+{value}s</b><small>{selectedHistory.savedAt[stationPenaltyField(index)] ? `Saved ${new Date(selectedHistory.savedAt[stationPenaltyField(index)]!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved"}</small></div>)}<div><span>Cognitive skill · {selectedHistory.cognitiveScore}%</span><b>+{selectedHistory.cognitivePenalty}s</b><small>RaceResult confirmed</small></div></div>
+                  <div className="history-total"><span>Total submitted penalty</span><b>+{selectedHistory.totalPenalty}s</b></div>
+                </div> : <div className="athlete-list">{judgedAthletes.length ? judgedAthletes.map((result) => <button key={result.id} className="athlete-row" onClick={() => setSelectedHistory(result)}><span className="avatar">{result.athlete.avatar}</span><span className="athlete-main"><b>{result.athlete.name}</b><small>BIB {result.athlete.bib} · {new Date(result.completedAt).toLocaleString()}</small></span><span className="bib">+{result.totalPenalty}s</span><span className="status">Saved</span><i>›</i></button>) : <div className="history-empty">No completed athletes on this device yet.</div>}</div>}
               </div>
             )}
 
