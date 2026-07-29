@@ -1,4 +1,5 @@
 import pg from "pg";
+import { postRaceResultUpdate } from "../lib/raceresult-update.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
@@ -12,6 +13,12 @@ async function processBatch() {
   let operations = [];
   try {
     await client.query("BEGIN");
+    await client.query(
+      `UPDATE outbox_operations SET state='failed',
+       last_error=COALESCE(last_error,'Delivery interrupted before confirmation'),
+       next_attempt_at=now(),updated_at=now()
+       WHERE state='processing' AND updated_at<now()-interval '30 seconds'`,
+    );
     const result = await client.query(
       `SELECT o.*,c.update_api_url FROM outbox_operations o
        JOIN LATERAL (
@@ -20,6 +27,12 @@ async function processBatch() {
          ORDER BY version DESC LIMIT 1
        ) c ON true
        WHERE o.state IN ('pending','failed') AND o.next_attempt_at<=now()
+         AND NOT EXISTS (
+           SELECT 1 FROM outbox_operations older
+           WHERE older.event_id=o.event_id AND older.bib=o.bib AND older.field_name=o.field_name
+             AND older.created_at<o.created_at
+             AND older.state IN ('pending','processing','failed')
+         )
        ORDER BY o.created_at LIMIT 25 FOR UPDATE OF o SKIP LOCKED`,
     );
     operations = result.rows;
@@ -37,13 +50,16 @@ async function processBatch() {
   for (const operation of operations) {
     try {
       if (!operation.update_api_url) throw new Error("Published RaceResult update endpoint is empty");
-      const target = new URL(operation.update_api_url);
-      target.searchParams.set("bib", operation.bib);
-      target.searchParams.set("fieldname", operation.field_name);
-      target.searchParams.set("value", operation.value);
-      target.searchParams.set("nohistory", "0");
-      const response = await fetch(target, { method: "POST", signal: AbortSignal.timeout(8000), headers: { accept: "application/json,text/plain,*/*" } });
-      if (!response.ok) throw new Error(`RaceResult HTTP ${response.status}`);
+      const response = await postRaceResultUpdate(operation.update_api_url, {
+        bib: operation.bib,
+        fieldName: operation.field_name,
+        value: operation.value,
+      });
+      if (!response.ok) {
+        const error = new Error(`RaceResult HTTP ${response.status}`);
+        error.permanent = response.status >= 400 && response.status < 500;
+        throw error;
+      }
       await pool.query("UPDATE outbox_operations SET state='confirmed',confirmed_at=now(),updated_at=now(),last_error=NULL WHERE id=$1", [operation.id]);
       const checkinMatch = operation.operation_key.match(/^checkin:([^:]+):/);
       if (checkinMatch) {
@@ -65,7 +81,7 @@ async function processBatch() {
       }
     } catch (error) {
       const attempts = operation.attempts + 1;
-      const state = attempts >= 8 ? "conflict" : "failed";
+      const state = error?.permanent || attempts >= 8 ? "conflict" : "failed";
       const delay = Math.min(300, 2 ** attempts);
       await pool.query(
         `UPDATE outbox_operations SET state=$2,attempts=$3,last_error=$4,next_attempt_at=now()+($5||' seconds')::interval,updated_at=now() WHERE id=$1`,

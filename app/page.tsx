@@ -317,19 +317,31 @@ export default function Home() {
         body: JSON.stringify(operation),
       });
       if (!response.ok) throw new Error(`Penalty update failed with HTTP ${response.status}`);
-      const saved = await response.json() as { operationId: string; savedAt: string };
+      const saved = await response.json() as {
+        operationId: string;
+        savedAt: string;
+        deliveryState?: "confirmed" | "pending" | "conflict";
+      };
       const isCurrent = penaltyOutboxRef.current.some((item) => item.operationId === saved.operationId);
       if (!isCurrent) return true;
 
-      setPenaltyOutbox((current) => {
-        const next = current.filter((item) => item.operationId !== saved.operationId);
-        penaltyOutboxRef.current = next;
-        return next;
-      });
+      const confirmed = saved.deliveryState !== "pending" && saved.deliveryState !== "conflict";
+      if (confirmed) {
+        setPenaltyOutbox((current) => {
+          const next = current.filter((item) => item.operationId !== saved.operationId);
+          penaltyOutboxRef.current = next;
+          return next;
+        });
+      }
       setPenaltyFieldState((current) => {
         const next = {
           ...current,
-          [operation.fieldName]: { value: operation.value, status: "saved" as const, savedAt: saved.savedAt },
+          [operation.fieldName]: confirmed
+            ? { value: operation.value, status: "saved" as const, savedAt: saved.savedAt }
+            : {
+                value: operation.value,
+                status: saved.deliveryState === "conflict" ? "failed" as const : "pending" as const,
+              },
         };
         penaltyFieldStateRef.current = next;
         return next;
@@ -421,14 +433,11 @@ export default function Home() {
 
   async function finishRecall() {
     setFinalizing(true);
-    const cognitiveSaved = await savePenaltyValue("cognitiveskillpenalty", recallPenalty);
+    const cognitiveAccepted = await savePenaltyValue("cognitiveskillpenalty", recallPenalty);
     await retryPenaltyOutbox();
-    const allSaved = penaltyFields.every(
-      (fieldName) => penaltyFieldStateRef.current[fieldName]?.status === "saved",
-    );
-    if (!cognitiveSaved || !allSaved) {
+    if (!cognitiveAccepted) {
       setFinalizing(false);
-      flash("Final Finish is waiting for all RaceResult updates · retry pending fields");
+      flash("Final Finish is waiting for the local event server");
       return;
     }
 
@@ -544,7 +553,7 @@ export default function Home() {
               <button className={screen === "event" ? "active" : ""}>⌂ <span>Events</span></button>
               <button className={["search","brief","sequence","race","recall","finish"].includes(screen) ? "active" : ""} onClick={() => screen === "history" && setScreen(historyReturnScreen)}>◎ <span>Active race</span></button>
               <button className={screen === "history" ? "active" : ""} onClick={() => { if (screen !== "history") setHistoryReturnScreen(screen); setSelectedHistory(null); setScreen("history"); }}>✓ <span>Judged athletes</span><i>{judgedAthletes.length}</i></button>
-              <button onClick={() => void retryPenaltyOutbox()}>↻ <span>Pending sync</span><i>{penaltyOutbox.length}</i></button>
+              <button>↻ <span>Pending sync</span><i>{penaltyOutbox.length}</i></button>
             </nav>
             <div className="side-status"><span className={online ? "live-dot" : "amber-dot"} /><div><b>{online ? "All systems normal" : "Offline mode active"}</b><small>{online ? "Last sync just now" : "Changes stay on this device"}</small></div></div>
           </aside>
@@ -632,7 +641,7 @@ export default function Home() {
                 })}</div>
                 <div className="station-layout">
                   <div className="station-card">
-                    <div className="station-number">STATION {station + 1} OF 6 <span className={`field-sync ${penaltyFieldState[stationPenaltyField(station)]?.status ?? "draft"}`}>{penaltyFieldState[stationPenaltyField(station)]?.status === "saved" ? "✓ Saved" : penaltyFieldState[stationPenaltyField(station)]?.status === "pending" ? "↻ Pending sync" : penaltyFieldState[stationPenaltyField(station)]?.status === "failed" ? "! Failed · queued" : "Draft"}</span></div>
+                    <div className="station-number">STATION {station + 1} OF 6 <span className={`field-sync ${penaltyFieldState[stationPenaltyField(station)]?.status ?? "draft"}`}>{penaltyFieldState[stationPenaltyField(station)]?.status === "saved" ? "✓ RaceResult confirmed" : penaltyFieldState[stationPenaltyField(station)]?.status === "pending" ? "↻ Offline · retrying" : penaltyFieldState[stationPenaltyField(station)]?.status === "failed" ? "! Sync needs attention" : "Draft"}</span></div>
                     <h3>{stations[station]}</h3>
                     <p>200 m run completed · Observe the full movement standard.</p>
                     <div className="quick-label"><b>Penalty</b><span>Add seconds only for an observed violation</span></div>
@@ -666,7 +675,7 @@ export default function Home() {
                   <div className={`score-card ${score >= 60 ? "pass" : "fail"}`}><div><small>MATCH SCORE</small><b>{score}%</b></div><span>{score >= 60 ? "✓ Passed · no cognitive penalty" : "Needs penalty · score below 60%"}</span></div>
                 </section>}
                 {recallComplete && score < 60 && <div className="recall-penalty"><label>Cognitive penalty</label><div>{[30,60,90].map(v => <button className={recallPenalty === v ? "active":""} key={v} onClick={() => setRecallPenalty(v)}>+{v}s</button>)}</div></div>}
-                {!!penaltyOutbox.length && <div className="sync-warning"><div><b>{penaltyOutbox.length} RaceResult update{penaltyOutbox.length === 1 ? "" : "s"} pending</b><span>Final Finish unlocks after every field is saved.</span></div><button onClick={() => void retryPenaltyOutbox()}>Retry now</button></div>}
+                {!!penaltyOutbox.length && <div className="sync-warning"><div><b>{penaltyOutbox.length} RaceResult update{penaltyOutbox.length === 1 ? "" : "s"} pending</b><span>Saved locally · retrying automatically when RR14 is reachable.</span></div></div>}
                 <button className="primary wide" disabled={finalizing || !recallComplete || (score < 60 && recallPenalty === 0)} onClick={() => void finishRecall()}>{finalizing ? "Syncing final result…" : "Confirm recall & Final Finish"} <span>→</span></button>
               </div>
             )}
@@ -678,7 +687,7 @@ export default function Home() {
                 {selectedHistory ? <div className="history-detail">
                   <button className="back" onClick={() => setSelectedHistory(null)}>← All judged athletes</button>
                   <div className="result-athlete"><span className="avatar large">{selectedHistory.athlete.avatar}</span><div><b>{selectedHistory.athlete.name}</b><span>BIB {selectedHistory.athlete.bib} · {selectedHistory.athlete.category}</span></div><div className="history-lock">🔒 READ ONLY</div></div>
-                  <div className="history-penalties">{selectedHistory.penalties.map((value, index) => <div key={index}><span>Station {index + 1} · {stations[index]}</span><b>+{value}s</b><small>{selectedHistory.savedAt[stationPenaltyField(index)] ? `Saved ${new Date(selectedHistory.savedAt[stationPenaltyField(index)]!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved"}</small></div>)}<div><span>Cognitive skill · {selectedHistory.cognitiveScore}%</span><b>+{selectedHistory.cognitivePenalty}s</b><small>RaceResult confirmed</small></div></div>
+                  <div className="history-penalties">{selectedHistory.penalties.map((value, index) => <div key={index}><span>Station {index + 1} · {stations[index]}</span><b>+{value}s</b><small>{selectedHistory.savedAt[stationPenaltyField(index)] ? `RR14 confirmed ${new Date(selectedHistory.savedAt[stationPenaltyField(index)]!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "RR14 sync pending at finish"}</small></div>)}<div><span>Cognitive skill · {selectedHistory.cognitiveScore}%</span><b>+{selectedHistory.cognitivePenalty}s</b><small>{selectedHistory.savedAt.cognitiveskillpenalty ? `RR14 confirmed ${new Date(selectedHistory.savedAt.cognitiveskillpenalty).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "RR14 sync pending at finish"}</small></div></div>
                   <div className="history-total"><span>Total submitted penalty</span><b>+{selectedHistory.totalPenalty}s</b></div>
                 </div> : <div className="athlete-list">{judgedAthletes.length ? judgedAthletes.map((result) => <button key={result.id} className="athlete-row" onClick={() => setSelectedHistory(result)}><span className="avatar">{result.athlete.avatar}</span><span className="athlete-main"><b>{result.athlete.name}</b><small>BIB {result.athlete.bib} · {new Date(result.completedAt).toLocaleString()}</small></span><span className="bib">+{result.totalPenalty}s</span><span className="status">Saved</span><i>›</i></button>) : <div className="history-empty">No completed athletes on this device yet.</div>}</div>}
               </div>
