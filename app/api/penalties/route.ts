@@ -25,7 +25,7 @@ type StoredPenaltyOperation = {
   confirmedAt?: string;
 };
 
-async function deliverPenaltyOperation(operationId: string, eventId: string) {
+export async function deliverOutboxOperation(operationId: string, eventId: string) {
   const existing = await query<StoredPenaltyOperation>(
     `SELECT o.id,o.event_id AS "eventId",o.bib,o.field_name AS "fieldName",o.value,o.state,
       o.confirmed_at AS "confirmedAt"
@@ -189,7 +189,7 @@ export async function POST(request: Request) {
           state: "pending" as const,
         };
       });
-      const delivery = await deliverPenaltyOperation(operation.id, auth.user.eventId);
+      const delivery = await deliverOutboxOperation(operation.id, auth.user.eventId);
       return Response.json({
         operationId: payload.operationId,
         bib: payload.bib,

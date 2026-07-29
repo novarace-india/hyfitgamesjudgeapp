@@ -400,6 +400,21 @@ Judging uses:
 - `station5penalty`
 - `station6penalty`
 - `cognitiveskillpenalty`
+- `cognitiveskillbonus`
+- `station1ics` through `station6ics`
+- `station1note` through `station6note`
+- `Status`
+
+Station 3 (Bear Crawl) is the only station with a time penalty: `10` seconds
+for a knee touch. All stations default to penalty `0` and ICS `0`. Confirming
+ICS writes the station ICS field as `1`, records the judge note, and writes
+`Status=1` (Out of Competition).
+
+Cognitive scoring always clears and writes both adjustment fields:
+
+- 0–60%: penalty `30`, bonus `0`
+- 61–99%: penalty `0`, bonus `0`
+- 100%: penalty `0`, bonus `30`
 
 The worker sends each field through POST using:
 
@@ -409,6 +424,11 @@ The worker sends each field through POST using:
 
 The URL is constructed safely with URL query parameters. `nohistory=0` preserves
 RaceResult participant history.
+
+Manual timing is a local backup record. Cognitive memorisation, six run splits,
+six station splits, recall timing, and Finish Line timing are never posted to
+RaceResult. Administrators can export this data from
+`/api/judge/timing/export?format=csv` or `?format=json`.
 
 ### Outbox worker
 

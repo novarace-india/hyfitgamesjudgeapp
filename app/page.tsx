@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { colorChoices, colorSequence, scoreSequence, type ColorKey } from "./cognitive-sequence";
 import QrScanner from "./qr-scanner";
+import TimingConsole from "./timing-console";
 import {
   penaltyFields,
   stationPenaltyField,
@@ -27,6 +28,7 @@ type Screen =
   | "event"
   | "search"
   | "brief"
+  | "timing"
   | "sequence"
   | "race"
   | "recall"
@@ -294,7 +296,7 @@ export default function Home() {
       });
       const data = await response.json() as { error?: string };
       if (!response.ok) return flash(data.error ?? "Athlete could not be assigned");
-      setScreen("sequence");
+      setScreen("timing");
     } catch {
       flash("Local event server is unavailable");
     }
@@ -551,7 +553,7 @@ export default function Home() {
             <div className="judge-chip"><span>AL</span><div><b>Arul Lakshmanan</b><small>{judgeId.toUpperCase()} · Floor Judge</small></div></div>
             <nav>
               <button className={screen === "event" ? "active" : ""}>⌂ <span>Events</span></button>
-              <button className={["search","brief","sequence","race","recall","finish"].includes(screen) ? "active" : ""} onClick={() => screen === "history" && setScreen(historyReturnScreen)}>◎ <span>Active race</span></button>
+              <button className={["search","brief","timing","sequence","race","recall","finish"].includes(screen) ? "active" : ""} onClick={() => screen === "history" && setScreen(historyReturnScreen)}>◎ <span>Active race</span></button>
               <button className={screen === "history" ? "active" : ""} onClick={() => { if (screen !== "history") setHistoryReturnScreen(screen); setSelectedHistory(null); setScreen("history"); }}>✓ <span>Judged athletes</span><i>{judgedAthletes.length}</i></button>
               <button>↻ <span>Pending sync</span><i>{penaltyOutbox.length}</i></button>
             </nav>
@@ -613,6 +615,16 @@ export default function Home() {
                   <button className="primary" onClick={() => void claimAthlete()}>Pair & begin cognitive sequence <span>→</span></button>
                 </div>
               </div>
+            )}
+
+            {screen === "timing" && (
+              <TimingConsole
+                athlete={athlete}
+                onJudgeNextAthlete={() => {
+                  setQuery("");
+                  setScreen("search");
+                }}
+              />
             )}
 
             {screen === "sequence" && (
