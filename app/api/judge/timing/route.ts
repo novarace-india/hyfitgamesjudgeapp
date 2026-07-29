@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import { colorSequence, type ColorKey } from "../../../cognitive-sequence";
 import {
   cognitiveAdjustment,
+  allowsBearCrawlPenalty,
   raceStage,
   validateStationOutcome,
   type StationOutcome,
@@ -23,6 +24,7 @@ type ActiveRace = {
   participantId: string;
   bib: string;
   participantName: string;
+  contestId: string;
   judgeId: string;
   currentStage: string;
   manualStartedAt: string | null;
@@ -42,7 +44,7 @@ function validOperationId(value: unknown): value is string {
 async function raceSnapshot(eventId: string, judgeId: string, bib: string) {
   const session = await query<ActiveRace>(
     `SELECT r.id,r.event_id AS "eventId",r.participant_id AS "participantId",p.bib,
-      p.name AS "participantName",r.judge_id AS "judgeId",r.current_stage AS "currentStage",
+      p.name AS "participantName",p.contest_id AS "contestId",r.judge_id AS "judgeId",r.current_stage AS "currentStage",
       r.manual_started_at AS "manualStartedAt",
       r.cognitive_recall_started_at AS "cognitiveRecallStartedAt",
       r.is_ooc AS "isOoc",r.state
@@ -130,7 +132,7 @@ export async function POST(request: Request) {
     await transaction(async (client) => {
       const raceResult = await client.query<ActiveRace>(
         `SELECT r.id,r.event_id AS "eventId",r.participant_id AS "participantId",p.bib,
-          p.name AS "participantName",r.judge_id AS "judgeId",r.current_stage AS "currentStage",
+          p.name AS "participantName",p.contest_id AS "contestId",r.judge_id AS "judgeId",r.current_stage AS "currentStage",
           r.manual_started_at AS "manualStartedAt",
           r.cognitive_recall_started_at AS "cognitiveRecallStartedAt",
           r.is_ooc AS "isOoc",r.state
@@ -202,8 +204,11 @@ export async function POST(request: Request) {
           const outcome = body.outcome ?? "none";
           const penaltySeconds = Number(body.penaltySeconds ?? 0);
           const note = String(body.note ?? "").trim();
-          if (!validateStationOutcome(stationNumber, outcome, penaltySeconds, note)) {
-            throw Object.assign(new Error("Choose an allowed outcome and add a note for ICS"), { status: 400 });
+          if (!validateStationOutcome(stationNumber, outcome, penaltySeconds, note, race.contestId)) {
+            const message = outcome === "penalty" && stationNumber === 3 && !allowsBearCrawlPenalty(race.contestId)
+              ? "Bear Crawl penalties do not apply to this participant's contest"
+              : "Choose an allowed outcome and add a note for ICS";
+            throw Object.assign(new Error(message), { status: 400 });
           }
           await client.query(
             `INSERT INTO station_outcomes(

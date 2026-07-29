@@ -16,6 +16,7 @@ export function participantFieldConfig(mapping: StoredParticipantMapping): Parti
     bibField: mappingValue(mapping, ["bibField", "bib"], "bib"),
     nameField: mappingValue(mapping, ["nameField", "name"], "name"),
     categoryField: mappingValue(mapping, ["categoryField", "category"], "category"),
+    contestIdField: mappingValue(mapping, ["contestIdField", "contestId"], "ContestID"),
     waveField: mappingValue(mapping, ["waveField", "wave"], "wave"),
     genderField: mappingValue(mapping, ["genderField", "gender"], "Gender"),
     dateOfBirthField: mappingValue(mapping, ["dateOfBirthField", "dateOfBirth"], "DateOfBirth"),
@@ -42,6 +43,7 @@ export function parseParticipantImport(payload: unknown, mapping: StoredParticip
 
   config.bibField = matchingKey(config.bibField, ["bib", "bibnumber", "startnumber"]);
   config.categoryField = matchingKey(config.categoryField, ["category", "contest", "race"]);
+  config.contestIdField = matchingKey(config.contestIdField, ["contestid", "contest_id"]);
   config.waveField = matchingKey(config.waveField, ["wave", "startwave", "startgroup"]);
   config.genderField = matchingKey(config.genderField, ["gender", "sex"]);
   config.dateOfBirthField = matchingKey(config.dateOfBirthField, ["dateofbirth", "dob", "birthdate"]);
@@ -89,8 +91,8 @@ function setValueAtPath(payload: unknown, path: string, value: unknown): unknown
 }
 
 export function classifyParticipantImport(
-  existing: Map<string, { name: string; category: string; wave: string; gender: string; dateOfBirth: string; club: string; sourceId: string }>,
-  incoming: Array<{ bib: string; name: string; category: string; wave: string; gender: string; dateOfBirth: string; club: string; id: string }>,
+  existing: Map<string, { name: string; category: string; contestId: string; wave: string; gender: string; dateOfBirth: string; club: string; sourceId: string }>,
+  incoming: Array<{ bib: string; name: string; category: string; contestId: string; wave: string; gender: string; dateOfBirth: string; club: string; id: string }>,
 ) {
   let inserted = 0;
   let updated = 0;
@@ -103,6 +105,7 @@ export function classifyParticipantImport(
     } else if (
       current.name !== participant.name ||
       current.category !== participant.category ||
+      current.contestId !== participant.contestId ||
       current.wave !== participant.wave ||
       current.gender !== participant.gender ||
       current.dateOfBirth !== participant.dateOfBirth ||

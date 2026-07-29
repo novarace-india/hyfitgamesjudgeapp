@@ -40,9 +40,15 @@ export function raceStage(id: string) {
   return raceStages.find((stage) => stage.id === id);
 }
 
-export function validateStationOutcome(stationNumber: number, outcome: StationOutcome, penaltySeconds: number, note: string) {
+const bearCrawlPenaltyExemptContests = new Set(["1", "2", "3", "4", "9"]);
+
+export function allowsBearCrawlPenalty(contestId: string | null | undefined) {
+  return !bearCrawlPenaltyExemptContests.has(String(contestId ?? "").trim());
+}
+
+export function validateStationOutcome(stationNumber: number, outcome: StationOutcome, penaltySeconds: number, note: string, contestId = "") {
   if (outcome === "ics") return note.trim().length > 0 && penaltySeconds === 0;
-  if (outcome === "penalty") return stationNumber === 3 && penaltySeconds === 10;
+  if (outcome === "penalty") return stationNumber === 3 && penaltySeconds === 10 && allowsBearCrawlPenalty(contestId);
   return outcome === "none" && penaltySeconds === 0;
 }
 

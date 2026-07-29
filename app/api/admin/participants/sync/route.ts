@@ -83,13 +83,14 @@ export async function POST(request: Request) {
         bib: string;
         name: string;
         category: string;
+        contestId: string;
         wave: string;
         gender: string;
         dateOfBirth: string;
         club: string;
         sourceId: string;
       }>(
-        `SELECT bib,name,category,wave,gender,COALESCE(date_of_birth::text,'') AS "dateOfBirth",
+        `SELECT bib,name,category,contest_id AS "contestId",wave,gender,COALESCE(date_of_birth::text,'') AS "dateOfBirth",
           club,COALESCE(source_id,'') AS "sourceId"
            FROM participants WHERE event_id=$1`,
         [eventId],
@@ -99,11 +100,11 @@ export async function POST(request: Request) {
 
       for (const participant of normalized.participants) {
         await client.query(
-          `INSERT INTO participants(event_id,source_id,bib,name,category,wave,gender,date_of_birth,club,source_status,source_data,last_source_sync_at)
-           VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,'')::date,$9,$10,$11::jsonb,now())
+          `INSERT INTO participants(event_id,source_id,bib,name,category,contest_id,wave,gender,date_of_birth,club,source_status,source_data,last_source_sync_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,'')::date,$10,$11,$12::jsonb,now())
            ON CONFLICT(event_id,bib) DO UPDATE SET
              source_id=EXCLUDED.source_id,name=EXCLUDED.name,category=EXCLUDED.category,
-             wave=EXCLUDED.wave,gender=EXCLUDED.gender,date_of_birth=EXCLUDED.date_of_birth,
+             contest_id=EXCLUDED.contest_id,wave=EXCLUDED.wave,gender=EXCLUDED.gender,date_of_birth=EXCLUDED.date_of_birth,
              club=EXCLUDED.club,source_status=EXCLUDED.source_status,
              source_data=EXCLUDED.source_data,last_source_sync_at=now(),updated_at=now()`,
           [
@@ -112,6 +113,7 @@ export async function POST(request: Request) {
             participant.bib,
             participant.name,
             participant.category,
+            participant.contestId,
             participant.wave,
             participant.gender,
             participant.dateOfBirth,

@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const code = new URL(request.url).searchParams.get("code")?.trim() ?? "";
   if (!code) return Response.json({ error: "Wristband code is required" }, { status: 400 });
   const result = await query(
-    `SELECT p.id,p.bib,p.name,p.category,p.wave,
+    `SELECT p.id,p.bib,p.name,p.category,p.contest_id AS "contestId",p.wave,
       CASE WHEN EXISTS(SELECT 1 FROM race_sessions r WHERE r.participant_id=p.id AND r.state='active') THEN 'On course' ELSE 'Ready' END AS status
       FROM asset_assignments a JOIN participants p ON p.id=a.participant_id
       WHERE a.event_id=$1 AND a.asset_type='wristband' AND a.asset_code=$2 AND a.active=true`,

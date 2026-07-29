@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 import {
+  allowsBearCrawlPenalty,
   cognitiveAdjustment,
   formatRaceTime,
   raceStage,
   raceStages,
   validateStationOutcome,
 } from "../app/race-format.ts";
+
+const timingRoute = fs.readFileSync("app/api/judge/timing/route.ts", "utf8");
+const timingConsole = fs.readFileSync("app/timing-console.tsx", "utf8");
 
 test("defines the complete guided timing sequence", () => {
   assert.equal(raceStage("ready").nextId, "cognitive_memorise");
@@ -25,6 +30,25 @@ test("allows only the fixed Bear Crawl penalty", () => {
   assert.equal(validateStationOutcome(3, "penalty", 20, ""), false);
   assert.equal(validateStationOutcome(2, "penalty", 10, ""), false);
   assert.equal(validateStationOutcome(1, "none", 0, ""), true);
+});
+
+test("removes Bear Crawl penalties only for configured contest IDs", () => {
+  for (const contestId of ["1", "2", "3", "4", "9"]) {
+    assert.equal(allowsBearCrawlPenalty(contestId), false);
+    assert.equal(validateStationOutcome(3, "penalty", 10, "", contestId), false);
+    assert.equal(validateStationOutcome(3, "ics", 0, "Incomplete", contestId), true);
+  }
+  assert.equal(allowsBearCrawlPenalty("5"), true);
+  assert.equal(validateStationOutcome(3, "penalty", 10, "", "5"), true);
+  assert.equal(allowsBearCrawlPenalty(""), true);
+  assert.equal(validateStationOutcome(3, "penalty", 10, "", ""), true);
+});
+
+test("enforces contest eligibility in both the timing API and Judge UI", () => {
+  assert.match(timingRoute, /p\.contest_id AS "contestId"/);
+  assert.match(timingRoute, /validateStationOutcome\(stationNumber, outcome, penaltySeconds, note, race\.contestId\)/);
+  assert.match(timingRoute, /Bear Crawl penalties do not apply to this participant's contest/);
+  assert.match(timingConsole, /stage\.stationNumber === 3 && allowsBearCrawlPenalty\(athlete\.contestId\)/);
 });
 
 test("requires notes for incomplete stations", () => {

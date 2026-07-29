@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { colorChoices, colorSequence, type ColorKey } from "./cognitive-sequence";
 import {
+  allowsBearCrawlPenalty,
   formatRaceTime,
   raceStage,
   raceStages,
@@ -156,7 +157,7 @@ export default function TimingConsole({
       action: "complete_stage",
       stageId: stage.id,
       outcome: stage.kind === "station" ? outcome : "none",
-      penaltySeconds: stage.stationNumber === 3 && outcome === "penalty" ? 10 : 0,
+      penaltySeconds: stage.stationNumber === 3 && outcome === "penalty" && allowsBearCrawlPenalty(athlete.contestId) ? 10 : 0,
       note: stage.kind === "station" ? note.trim() : "",
     });
     if (result) {
@@ -266,7 +267,7 @@ export default function TimingConsole({
                 <input type="radio" name="outcome" checked={outcome === "none"} onChange={() => setOutcome("none")} />
                 <b>No penalty</b><span>Station completed correctly</span>
               </label>
-              {stage.stationNumber === 3 && (
+              {stage.stationNumber === 3 && allowsBearCrawlPenalty(athlete.contestId) && (
                 <label className={outcome === "penalty" ? "selected penalty" : ""}>
                   <input type="radio" name="outcome" checked={outcome === "penalty"} onChange={() => setOutcome("penalty")} />
                   <b>+10 seconds</b><span>Knee touched during Bear Crawl</span>

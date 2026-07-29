@@ -12,6 +12,7 @@ export type ParticipantFieldConfig = {
   bibField: string;
   nameField: string;
   categoryField: string;
+  contestIdField: string;
   waveField: string;
   genderField: string;
   dateOfBirthField: string;
@@ -31,6 +32,7 @@ function fieldConfigFromEnvironment(): ParticipantFieldConfig {
     bibField: process.env.PARTICIPANT_BIB_FIELD ?? "bib",
     nameField: process.env.PARTICIPANT_NAME_FIELD ?? "name",
     categoryField: process.env.PARTICIPANT_CATEGORY_FIELD ?? "category",
+    contestIdField: process.env.PARTICIPANT_CONTEST_ID_FIELD ?? "ContestID",
     waveField: process.env.PARTICIPANT_WAVE_FIELD ?? "wave",
     genderField: process.env.PARTICIPANT_GENDER_FIELD ?? "Gender",
     dateOfBirthField: process.env.PARTICIPANT_DATE_OF_BIRTH_FIELD ?? "DateOfBirth",
@@ -109,6 +111,7 @@ export function normalizeParticipants(
       bib,
       name,
       category: sourceString(record, config.categoryField) || "Unassigned",
+      contestId: sourceString(record, config.contestIdField),
       wave: sourceString(record, config.waveField) || "Wave pending",
       gender: sourceString(record, config.genderField),
       dateOfBirth: normalizeDateOfBirth(sourceString(record, config.dateOfBirthField)),
