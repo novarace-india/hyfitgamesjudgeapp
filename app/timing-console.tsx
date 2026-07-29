@@ -295,7 +295,20 @@ export default function TimingConsole({
           {stage.kind === "recall" && (
             <>
               <div className="timing-recall-progress">
-                {colorSequence.map((_, index) => <span key={index} className={recall[index] ? "filled" : ""}>{recall[index] ?? index + 1}</span>)}
+                {colorSequence.map((_, index) => {
+                  const answer = recall[index];
+                  const choice = answer ? colorChoices[answer] : null;
+                  return (
+                    <span
+                      key={index}
+                      className={answer ? "filled" : ""}
+                      style={choice ? { "--response-color": choice.color, "--response-text": choice.textColor } as React.CSSProperties : undefined}
+                      aria-label={answer ? `Answer ${index + 1}: ${answer}` : `Answer ${index + 1}: waiting`}
+                    >
+                      {answer ?? index + 1}
+                    </span>
+                  );
+                })}
               </div>
               <div className="timing-colour-buttons">
                 {(Object.keys(colorChoices) as ColorKey[]).map((color) => (
@@ -314,11 +327,47 @@ export default function TimingConsole({
           {stage.kind === "finish" && (
             <>
               {snapshot.cognitive && (
-                <div className="timing-cognitive-result">
-                  <div><small>CORRECT</small><b>{snapshot.cognitive.correctCount}/10</b></div>
-                  <div><small>SCORE</small><b>{snapshot.cognitive.percentage}%</b></div>
-                  <div><small>ADJUSTMENT</small><b>{snapshot.cognitive.bonusSeconds ? `30 s bonus` : snapshot.cognitive.penaltySeconds ? `+30 s` : "No change"}</b></div>
-                </div>
+                <>
+                  <div className="timing-recall-review">
+                    <b>Athlete response</b>
+                    <div className="timing-review-row">
+                      {snapshot.cognitive.response.map((answer, index) => {
+                        const choice = colorChoices[answer];
+                        const correct = answer === colorSequence[index];
+                        return (
+                          <span
+                            key={index}
+                            className={correct ? "correct" : "incorrect"}
+                            style={{ "--response-color": choice.color, "--response-text": choice.textColor } as React.CSSProperties}
+                            aria-label={`Answer ${index + 1}: ${answer}, ${correct ? "correct" : "incorrect"}`}
+                          >
+                            <b>{answer}</b><small>{correct ? "✓" : "×"}</small>
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <b>Actual sequence</b>
+                    <div className="timing-review-row actual">
+                      {colorSequence.map((answer, index) => {
+                        const choice = colorChoices[answer];
+                        return (
+                          <span
+                            key={index}
+                            style={{ "--response-color": choice.color, "--response-text": choice.textColor } as React.CSSProperties}
+                            aria-label={`Actual colour ${index + 1}: ${answer}`}
+                          >
+                            <b>{answer}</b>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="timing-cognitive-result">
+                    <div><small>CORRECT</small><b>{snapshot.cognitive.correctCount}/10</b></div>
+                    <div><small>SCORE</small><b>{snapshot.cognitive.percentage}%</b></div>
+                    <div><small>ADJUSTMENT</small><b>{snapshot.cognitive.bonusSeconds ? `30 s bonus` : snapshot.cognitive.penaltySeconds ? `+30 s` : "No change"}</b></div>
+                  </div>
+                </>
               )}
               <button className="timing-primary timing-finish" disabled={busy} onClick={() => void act({ action: "finish" })}>
                 <span>Finish Race</span><small>Tap when the athlete crosses the Finish Line</small>
