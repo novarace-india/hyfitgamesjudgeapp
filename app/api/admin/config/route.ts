@@ -8,7 +8,11 @@ export async function GET(request: Request) {
   const result = await query(
     `SELECT id,event_id AS "eventId",version,state,participant_api_url AS "participantApiUrl",
       update_api_url AS "updateApiUrl",participant_mapping AS "participantMapping",
-      update_mapping AS "updateMapping",rules,published_at AS "publishedAt"
+      update_mapping AS "updateMapping",rules,
+      require_participant_photo AS "requireParticipantPhoto",
+      require_declaratory_signature AS "requireDeclaratorySignature",
+      declaration_text AS "declarationText",declaration_version AS "declarationVersion",
+      media_retention_days AS "mediaRetentionDays",published_at AS "publishedAt"
       FROM event_configs WHERE event_id=$1 ORDER BY version DESC LIMIT 1`,
     [eventId],
   );
@@ -21,11 +25,19 @@ export async function PUT(request: Request) {
   const body = await request.json() as Record<string, unknown>;
   const eventId = String(body.eventId ?? auth.user.eventId ?? "");
   if (!eventId) return Response.json({ error: "Event is required" }, { status: 400 });
+  const retentionDays = Number(body.mediaRetentionDays ?? 30);
+  if (!Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 365) {
+    return Response.json({ error: "Media retention must be between 1 and 365 days" }, { status: 400 });
+  }
+  const declarationText = String(body.declarationText ?? "").trim() ||
+    "I confirm that my participant details are correct and that I have received the assigned race equipment.";
   const result = await query<{ id: string; version: number }>(
-    `INSERT INTO event_configs(event_id,version,state,participant_api_url,update_api_url,participant_mapping,update_mapping,rules)
-     VALUES($1,COALESCE((SELECT max(version)+1 FROM event_configs WHERE event_id=$1),1),'draft',$2,$3,$4::jsonb,$5::jsonb,$6::jsonb)
+    `INSERT INTO event_configs(event_id,version,state,participant_api_url,update_api_url,participant_mapping,update_mapping,rules,
+      require_participant_photo,require_declaratory_signature,declaration_text,declaration_version,media_retention_days)
+     VALUES($1,COALESCE((SELECT max(version)+1 FROM event_configs WHERE event_id=$1),1),'draft',$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,
+      $7,$8,$9,COALESCE((SELECT max(declaration_version)+1 FROM event_configs WHERE event_id=$1 AND declaration_text<>$9),1),$10)
      RETURNING id,version`,
-    [eventId, String(body.participantApiUrl ?? ""), String(body.updateApiUrl ?? ""), JSON.stringify(body.participantMapping ?? {}), JSON.stringify(body.updateMapping ?? {}), JSON.stringify(body.rules ?? {})],
+    [eventId, String(body.participantApiUrl ?? ""), String(body.updateApiUrl ?? ""), JSON.stringify(body.participantMapping ?? {}), JSON.stringify(body.updateMapping ?? {}), JSON.stringify(body.rules ?? {}), Boolean(body.requireParticipantPhoto), Boolean(body.requireDeclaratorySignature), declarationText, retentionDays],
   );
   await audit(auth.user.id, eventId, "config.save_draft", "event_config", result.rows[0].id, { version: result.rows[0].version });
   return Response.json(result.rows[0], { status: 201 });

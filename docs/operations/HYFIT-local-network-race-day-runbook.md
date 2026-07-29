@@ -584,3 +584,44 @@ If the primary server fails:
 - [Apple: Control local-network access on macOS](https://support.apple.com/guide/mac-help/control-access-to-your-local-network-on-mac-mchla4f49138/mac)
 - [Microsoft: Windows Firewall rules](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/rules)
 - [Microsoft: Windows Firewall overview](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/)
+# Two-stage athlete Check-In
+
+Configure every Check-In counter in Event Control as one of:
+
+- **Stage 1 · Check-In & Wristband**
+- **Stage 2 · Arena Transponder**
+
+Assign each volunteer to the counter where they are physically working. The
+volunteer cannot change stages from the Check-In screen.
+
+Create these case-sensitive fields in RaceResult before race day:
+
+| Stage | RaceResult field | Value sent |
+|---|---|---|
+| Stage 1 | `stage1checkin` | `COMPLETED` |
+| Stage 1 | `stage1checkintime` | Event-local `YYYY-MM-DD HH:mm:ss` |
+| Stage 1 | `wristbandID` | Scanned wristband code |
+| Stage 2 | `stage2checkin` | `COMPLETED` |
+| Stage 2 | `stage2checkintime` | Event-local `YYYY-MM-DD HH:mm:ss` |
+| Stage 2 | `Transponder1` | Scanned transponder code |
+
+Stage 1 requires a Government-ID visual check but never stores the ID number or
+an ID image. Photo and signature capture are independent Admin settings and are
+OFF by default. When media capture is used, configure `CHECKIN_MEDIA_DIR` on a
+persistent local volume and schedule:
+
+```sh
+npm run media:cleanup
+```
+
+Run cleanup daily. The default retention is 30 days after the event and can be
+changed in Event Control.
+
+Each stage saves locally before RaceResult delivery. **Sync pending** means the
+handover is accepted and the volunteer should continue with the next athlete.
+The worker retries automatically when internet connectivity returns. If the
+local server itself is unavailable, stop handovers until it is restored.
+
+Identity mismatches go to the Event Control **Exceptions** tab. Only an Event
+Admin may record an override or rejection reason. Active wristband or
+transponder assignments must never be silently reused.

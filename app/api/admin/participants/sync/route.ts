@@ -84,9 +84,13 @@ export async function POST(request: Request) {
         name: string;
         category: string;
         wave: string;
+        gender: string;
+        dateOfBirth: string;
+        club: string;
         sourceId: string;
       }>(
-        `SELECT bib,name,category,wave,COALESCE(source_id,'') AS "sourceId"
+        `SELECT bib,name,category,wave,gender,COALESCE(date_of_birth::text,'') AS "dateOfBirth",
+          club,COALESCE(source_id,'') AS "sourceId"
            FROM participants WHERE event_id=$1`,
         [eventId],
       );
@@ -95,11 +99,12 @@ export async function POST(request: Request) {
 
       for (const participant of normalized.participants) {
         await client.query(
-          `INSERT INTO participants(event_id,source_id,bib,name,category,wave,source_status,source_data,last_source_sync_at)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,now())
+          `INSERT INTO participants(event_id,source_id,bib,name,category,wave,gender,date_of_birth,club,source_status,source_data,last_source_sync_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,'')::date,$9,$10,$11::jsonb,now())
            ON CONFLICT(event_id,bib) DO UPDATE SET
              source_id=EXCLUDED.source_id,name=EXCLUDED.name,category=EXCLUDED.category,
-             wave=EXCLUDED.wave,source_status=EXCLUDED.source_status,
+             wave=EXCLUDED.wave,gender=EXCLUDED.gender,date_of_birth=EXCLUDED.date_of_birth,
+             club=EXCLUDED.club,source_status=EXCLUDED.source_status,
              source_data=EXCLUDED.source_data,last_source_sync_at=now(),updated_at=now()`,
           [
             eventId,
@@ -108,6 +113,9 @@ export async function POST(request: Request) {
             participant.name,
             participant.category,
             participant.wave,
+            participant.gender,
+            participant.dateOfBirth,
+            participant.club,
             participant.status,
             JSON.stringify(participant),
           ],

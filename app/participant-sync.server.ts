@@ -13,6 +13,9 @@ export type ParticipantFieldConfig = {
   nameField: string;
   categoryField: string;
   waveField: string;
+  genderField: string;
+  dateOfBirthField: string;
+  clubField: string;
   statusField: string;
   idField: string;
 };
@@ -29,6 +32,9 @@ function fieldConfigFromEnvironment(): ParticipantFieldConfig {
     nameField: process.env.PARTICIPANT_NAME_FIELD ?? "name",
     categoryField: process.env.PARTICIPANT_CATEGORY_FIELD ?? "category",
     waveField: process.env.PARTICIPANT_WAVE_FIELD ?? "wave",
+    genderField: process.env.PARTICIPANT_GENDER_FIELD ?? "Gender",
+    dateOfBirthField: process.env.PARTICIPANT_DATE_OF_BIRTH_FIELD ?? "DateOfBirth",
+    clubField: process.env.PARTICIPANT_CLUB_FIELD ?? "club",
     statusField: process.env.PARTICIPANT_STATUS_FIELD ?? "status",
     idField: process.env.PARTICIPANT_ID_FIELD ?? "id",
   };
@@ -40,7 +46,7 @@ function syncInterval() {
 }
 
 export function valueAtPath(value: unknown, path: string): unknown {
-  if (!path.trim()) return value;
+  if (!path?.trim()) return value;
   return path.split(".").reduce<unknown>((current, segment) => {
     if (!current || typeof current !== "object") return undefined;
     return (current as Record<string, unknown>)[segment];
@@ -48,6 +54,7 @@ export function valueAtPath(value: unknown, path: string): unknown {
 }
 
 function sourceString(record: SourceRecord, field: string) {
+  if (!field?.trim()) return "";
   const value = valueAtPath(record, field);
   return value == null ? "" : String(value).trim();
 }
@@ -63,6 +70,14 @@ function normalizeStatus(value: unknown): Participant["status"] {
   return ["on course", "on_course", "active", "assigned", "racing"].includes(status)
     ? "On course"
     : "Ready";
+}
+
+function normalizeDateOfBirth(value: string) {
+  if (!value) return "";
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+  if (!iso) return "";
+  const parsed = new Date(`${iso}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== iso ? "" : iso;
 }
 
 export function normalizeParticipants(
@@ -95,6 +110,9 @@ export function normalizeParticipants(
       name,
       category: sourceString(record, config.categoryField) || "Unassigned",
       wave: sourceString(record, config.waveField) || "Wave pending",
+      gender: sourceString(record, config.genderField),
+      dateOfBirth: normalizeDateOfBirth(sourceString(record, config.dateOfBirthField)),
+      club: sourceString(record, config.clubField),
       avatar: participantInitials(name),
       status: normalizeStatus(valueAtPath(record, config.statusField)),
     });

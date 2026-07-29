@@ -17,6 +17,9 @@ export function participantFieldConfig(mapping: StoredParticipantMapping): Parti
     nameField: mappingValue(mapping, ["nameField", "name"], "name"),
     categoryField: mappingValue(mapping, ["categoryField", "category"], "category"),
     waveField: mappingValue(mapping, ["waveField", "wave"], "wave"),
+    genderField: mappingValue(mapping, ["genderField", "gender"], "Gender"),
+    dateOfBirthField: mappingValue(mapping, ["dateOfBirthField", "dateOfBirth"], "DateOfBirth"),
+    clubField: mappingValue(mapping, ["clubField", "club"], "club"),
     statusField: mappingValue(mapping, ["statusField", "status"], "status"),
     idField: mappingValue(mapping, ["idField", "id"], "id"),
   };
@@ -40,6 +43,9 @@ export function parseParticipantImport(payload: unknown, mapping: StoredParticip
   config.bibField = matchingKey(config.bibField, ["bib", "bibnumber", "startnumber"]);
   config.categoryField = matchingKey(config.categoryField, ["category", "contest", "race"]);
   config.waveField = matchingKey(config.waveField, ["wave", "startwave", "startgroup"]);
+  config.genderField = matchingKey(config.genderField, ["gender", "sex"]);
+  config.dateOfBirthField = matchingKey(config.dateOfBirthField, ["dateofbirth", "dob", "birthdate"]);
+  config.clubField = matchingKey(config.clubField, ["club", "team", "teamname"]);
   config.statusField = matchingKey(config.statusField, ["status", "participantstatus"]);
   config.idField = matchingKey(config.idField, ["participantid", "id", "bib"]);
 
@@ -83,8 +89,8 @@ function setValueAtPath(payload: unknown, path: string, value: unknown): unknown
 }
 
 export function classifyParticipantImport(
-  existing: Map<string, { name: string; category: string; wave: string; sourceId: string }>,
-  incoming: Array<{ bib: string; name: string; category: string; wave: string; id: string }>,
+  existing: Map<string, { name: string; category: string; wave: string; gender: string; dateOfBirth: string; club: string; sourceId: string }>,
+  incoming: Array<{ bib: string; name: string; category: string; wave: string; gender: string; dateOfBirth: string; club: string; id: string }>,
 ) {
   let inserted = 0;
   let updated = 0;
@@ -98,6 +104,9 @@ export function classifyParticipantImport(
       current.name !== participant.name ||
       current.category !== participant.category ||
       current.wave !== participant.wave ||
+      current.gender !== participant.gender ||
+      current.dateOfBirth !== participant.dateOfBirth ||
+      current.club !== participant.club ||
       current.sourceId !== participant.id
     ) {
       updated += 1;

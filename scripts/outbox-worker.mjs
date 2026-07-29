@@ -79,6 +79,24 @@ async function processBatch() {
           await pool.query("UPDATE participants SET checkin_state='checked_in' WHERE id=$1", [operation.participant_id]);
         }
       }
+      const stageMatch = operation.operation_key.match(/^checkin-stage[12]:([^:]+):/);
+      if (stageMatch) {
+        const synchronization = await pool.query(
+          `SELECT r.id,
+            count(o.*)::int AS total,
+            count(*) FILTER(WHERE o.state='confirmed')::int AS confirmed,
+            count(*) FILTER(WHERE o.state='conflict')::int AS conflicts
+           FROM checkin_stage_records r
+           LEFT JOIN outbox_operations o
+             ON o.operation_key LIKE 'checkin-stage%:'||r.transaction_id||':%'
+           WHERE r.transaction_id=$1 GROUP BY r.id`,
+          [stageMatch[1]],
+        );
+        const status = synchronization.rows[0];
+        if (status?.total === 3 && status.confirmed === 3) {
+          await pool.query("UPDATE checkin_stage_records SET state='completed' WHERE id=$1", [status.id]);
+        }
+      }
     } catch (error) {
       const attempts = operation.attempts + 1;
       const state = error?.permanent || attempts >= 8 ? "conflict" : "failed";
@@ -91,6 +109,8 @@ async function processBatch() {
         await pool.query("UPDATE participants SET checkin_state='conflict' WHERE id=$1", [operation.participant_id]);
         const checkinMatch = operation.operation_key.match(/^checkin:([^:]+):/);
         if (checkinMatch) await pool.query("UPDATE checkins SET state='conflict' WHERE transaction_id=$1", [checkinMatch[1]]);
+        const stageMatch = operation.operation_key.match(/^checkin-stage[12]:([^:]+):/);
+        if (stageMatch) await pool.query("UPDATE checkin_stage_records SET state='attention' WHERE transaction_id=$1", [stageMatch[1]]);
       }
     }
   }

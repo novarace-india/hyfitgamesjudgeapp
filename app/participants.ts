@@ -4,6 +4,9 @@ export type Participant = {
   name: string;
   category: string;
   wave: string;
+  gender: string;
+  dateOfBirth: string;
+  club: string;
   avatar: string;
   status: "Ready" | "On course";
 };
@@ -22,11 +25,11 @@ export type ParticipantResponse = {
 };
 
 export const demoParticipants: Participant[] = [
-  { id: "25645", bib: "25645", name: "Riya Sharma", category: "Female Open", wave: "Wave 12 · 09:40", avatar: "RS", status: "Ready" },
-  { id: "25646", bib: "25646", name: "Rishabh Shah", category: "Male Open", wave: "Wave 12 · 09:40", avatar: "RS", status: "Ready" },
-  { id: "30821", bib: "30821", name: "Arjun Menon", category: "Male Pro", wave: "Wave 14 · 10:20", avatar: "AM", status: "Ready" },
-  { id: "17204", bib: "17204", name: "Meera & Tara", category: "Female Doubles", wave: "Wave 08 · 08:20", avatar: "MT", status: "On course" },
-  { id: "10483", bib: "10483", name: "Aarav Rao", category: "NextGen Boys", wave: "Wave 03 · 16:30", avatar: "AR", status: "Ready" },
+  { id: "25645", bib: "25645", name: "Riya Sharma", category: "Female Open", wave: "Wave 12 · 09:40", gender: "Female", dateOfBirth: "2005-02-18", club: "", avatar: "RS", status: "Ready" },
+  { id: "25646", bib: "25646", name: "Rishabh Shah", category: "Male Open", wave: "Wave 12 · 09:40", gender: "Male", dateOfBirth: "2003-11-02", club: "", avatar: "RS", status: "Ready" },
+  { id: "30821", bib: "30821", name: "Arjun Menon", category: "Male Pro", wave: "Wave 14 · 10:20", gender: "Male", dateOfBirth: "2001-06-23", club: "", avatar: "AM", status: "Ready" },
+  { id: "17204", bib: "17204", name: "Meera Iyer", category: "Female Doubles", wave: "Wave 08 · 08:20", gender: "Female", dateOfBirth: "2004-04-12", club: "Rapid Racers", avatar: "MI", status: "On course" },
+  { id: "10483", bib: "10483", name: "Aarav Rao", category: "NextGen Boys", wave: "Wave 03 · 16:30", gender: "Male", dateOfBirth: "2010-09-08", club: "", avatar: "AR", status: "Ready" },
 ];
 
 export function participantInitials(name: string) {

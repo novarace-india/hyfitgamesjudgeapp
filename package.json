@@ -18,6 +18,7 @@
     ,"db:seed": "node scripts/seed-platform.mjs"
     ,"worker": "node scripts/outbox-worker.mjs"
     ,"backup": "bash scripts/backup.sh"
+    ,"media:cleanup": "node scripts/cleanup-checkin-media.mjs"
   },
   "dependencies": {
     "@zxing/browser": "0.1.5",
