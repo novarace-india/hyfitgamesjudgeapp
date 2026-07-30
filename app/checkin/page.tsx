@@ -4,10 +4,11 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 import QrScanner from "../qr-scanner";
 import SignaturePad from "../signature-pad";
+import { isDoublesContestId } from "../doubles";
 
 type StageType = "STAGE_1_WRISTBAND" | "STAGE_2_TRANSPONDER";
 type StageReceipt = { state: string; completedAt: string; stationCode: string; stationName: string; volunteerName: string; assetCode: string };
-type Person = { id: string; bib: string; name: string; gender: string; dateOfBirth: string; category: string; wave: string; club: string; wristbandCode?: string; transponderCode?: string };
+type Person = { id: string; bib: string; name: string; gender: string; dateOfBirth: string; category: string; contestId: string; wave: string; club: string; wristbandCode?: string; transponderCode?: string };
 type ParticipantResult = { participant: Person; teammates: Array<Person & { stages: Record<string,string> }>; teamWarning: string | null; stages: Partial<Record<StageType,StageReceipt>> };
 type CheckinContext = {
   volunteer: { id: string; staffId: string; name: string };
@@ -149,7 +150,7 @@ export default function CheckinPage() {
             <div className="identity-top"><div><small>VERIFY ATHLETE</small><h1>{participant.name}</h1></div><strong><small>BIB</small>{participant.bib}</strong></div>
             <div className="identity-grid"><div><small>GENDER</small><b>{participant.gender || "Not provided"}</b></div><div><small>DATE OF BIRTH</small><b>{displayDate(participant.dateOfBirth)}</b></div><div><small>CONTEST</small><b>{participant.category}</b></div><div><small>WAVE TIME</small><b>{participant.wave}</b></div></div>
           </article>
-          {participant.club && <article className="team-card"><small>DOUBLES TEAM · {participant.club}</small>{result!.teammates.map((mate)=><div key={mate.id}><span><b>{mate.name}</b><small>BIB {mate.bib} · {mate.gender} · {displayDate(mate.dateOfBirth)}</small></span><em>{mate.stages?.STAGE_2_TRANSPONDER ? "Stage 2 ✓" : mate.stages?.STAGE_1_WRISTBAND ? "Stage 1 ✓" : "Waiting"}</em></div>)}{result!.teamWarning&&<p>⚠ {result!.teamWarning}</p>}</article>}
+          {isDoublesContestId(participant.contestId) && <article className="team-card"><small>DOUBLES TEAM · {participant.club || "Team data needs attention"}</small>{result!.teammates.map((mate)=><div key={mate.id}><span><b>{mate.name}</b><small>BIB {mate.bib} · {mate.gender} · {displayDate(mate.dateOfBirth)}</small></span><em>{mate.stages?.STAGE_2_TRANSPONDER ? "Stage 2 ✓" : mate.stages?.STAGE_1_WRISTBAND ? "Stage 1 ✓" : "Waiting"}</em></div>)}{result!.teamWarning&&<p>⚠ {result!.teamWarning}</p>}</article>}
           {!stageOne && result!.stages.STAGE_1_WRISTBAND && <article className="prior-stage-card"><small>STAGE 1 RECEIPT</small><b>Wristband {result!.stages.STAGE_1_WRISTBAND.assetCode}</b><span>{new Date(result!.stages.STAGE_1_WRISTBAND.completedAt).toLocaleString()} · {result!.stages.STAGE_1_WRISTBAND.stationCode} · {result!.stages.STAGE_1_WRISTBAND.volunteerName}</span></article>}
         </section>
         <section className="action-column">

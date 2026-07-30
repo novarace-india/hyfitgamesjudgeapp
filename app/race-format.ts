@@ -10,7 +10,7 @@ export const workoutStations = [
 ] as const;
 
 export type StationOutcome = "none" | "penalty" | "ics";
-export type RaceStageKind = "ready" | "memorise" | "run" | "station" | "recall" | "finish" | "complete";
+export type RaceStageKind = "ready" | "team_start" | "memorise" | "run" | "station" | "recall" | "finish" | "complete";
 
 export type RaceStage = {
   id: string;
@@ -24,6 +24,7 @@ export type RaceStage = {
 export const raceStages: RaceStage[] = [
   { id: "ready", name: "Cognitive Start", instruction: "Ask the athlete to get ready. Show the colours when the start line is clear.", kind: "ready", nextId: "cognitive_memorise" },
   { id: "cognitive_memorise", name: "Memorise Colours", instruction: "Keep the colours visible until the athlete says they are ready.", kind: "memorise", nextId: "run_1" },
+  { id: "team_start", name: "Team Start Line", instruction: "Tap when the first partner crosses the start line.", kind: "team_start", nextId: "run_1" },
   ...workoutStations.flatMap((station, index): RaceStage[] => {
     const number = index + 1;
     return [

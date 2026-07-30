@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { colorChoices, colorSequence, scoreSequence, type ColorKey } from "./cognitive-sequence";
 import QrScanner from "./qr-scanner";
 import TimingConsole from "./timing-console";
+import { isDoublesContestId } from "./doubles";
 import {
   penaltyFields,
   stationPenaltyField,
@@ -60,6 +61,15 @@ type JudgedAthlete = {
   cognitivePenalty: number;
   totalPenalty: number;
   savedAt: Partial<Record<PenaltyField, string>>;
+};
+
+type DoublesPairing = {
+  first: Participant;
+  expected: Participant;
+  firstWristband: string;
+  second: Participant | null;
+  secondWristband: string;
+  teamWarning: string | null;
 };
 
 function operationId() {
@@ -118,6 +128,7 @@ export default function Home() {
   const [syncingParticipants, setSyncingParticipants] = useState(false);
   const [participantSyncError, setParticipantSyncError] = useState("");
   const [athlete, setAthlete] = useState<Participant>(demoParticipants[0]);
+  const [doublesPairing, setDoublesPairing] = useState<DoublesPairing | null>(null);
   const [station, setStation] = useState(0);
   const [furthestStation, setFurthestStation] = useState(0);
   const [penalties, setPenalties] = useState<number[]>(Array(6).fill(0));
@@ -268,15 +279,54 @@ export default function Home() {
   function chooseAthlete(p: Participant) {
     if (p.status === "On course") return flash("Already assigned. Ask the Control Desk to reassign.");
     setAthlete(p);
+    setDoublesPairing(null);
     setScreen("brief");
   }
 
   const handleQrScan = useCallback(async (value: string) => {
     try {
       const response = await fetch(`/api/judge/resolve?code=${encodeURIComponent(value.trim())}`);
-      const data = await response.json() as { participant?: Participant; error?: string };
+      const data = await response.json() as {
+        participant?: Participant & { stage2Ready?: boolean };
+        teammate?: Participant & { stage2Ready?: boolean };
+        scannedWristbandCode?: string;
+        teamWarning?: string | null;
+        error?: string;
+      };
       if (!response.ok || !data.participant) return data.error ?? "Wristband could not be resolved";
       if (data.participant.status === "On course") return `BIB ${data.participant.bib} is already on course. Ask Event Control to reassign.`;
+      if (isDoublesContestId(data.participant.contestId)) {
+        if (data.teamWarning || !data.teammate) return data.teamWarning ?? "Registered Doubles teammate could not be resolved";
+        if (!data.participant.stage2Ready) return `${data.participant.name} must complete Stage 2 before pairing`;
+        if (!doublesPairing) {
+          setAthlete(data.participant);
+          setDoublesPairing({
+            first: data.participant,
+            expected: data.teammate,
+            firstWristband: data.scannedWristbandCode ?? value.trim(),
+            second: null,
+            secondWristband: "",
+            teamWarning: null,
+          });
+          setShowQrScanner(false);
+          setScreen("brief");
+          return null;
+        }
+        if (data.participant.id === doublesPairing.first.id) return "Scan the other partner’s wristband";
+        if (data.participant.id !== doublesPairing.expected.id) {
+          return `This is not ${doublesPairing.expected.name}’s registered wristband`;
+        }
+        if (!data.participant.stage2Ready) return `${data.participant.name} must complete Stage 2 before pairing`;
+        setDoublesPairing({
+          ...doublesPairing,
+          second: data.participant,
+          secondWristband: data.scannedWristbandCode ?? value.trim(),
+        });
+        setShowQrScanner(false);
+        setScreen("brief");
+        return null;
+      }
+      setDoublesPairing(null);
       setAthlete(data.participant);
       setShowQrScanner(false);
       setScreen("brief");
@@ -287,12 +337,22 @@ export default function Home() {
       if (!participant) return "Local server unavailable and this code cannot be matched from the saved roster.";
       setAthlete(participant); setShowQrScanner(false); setScreen("brief"); return null;
     }
-  }, [participants]);
+  }, [participants, doublesPairing]);
 
   async function claimAthlete() {
+    const doubles = isDoublesContestId(athlete.contestId);
+    if (doubles && (!doublesPairing?.second || !doublesPairing.secondWristband)) {
+      setShowQrScanner(true);
+      return;
+    }
     try {
       const response = await fetch("/api/judge/claim", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId: athlete.id }),
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(doubles ? {
+          wristbandCodes: [doublesPairing!.firstWristband, doublesPairing!.secondWristband],
+          readinessConfirmed: true,
+        } : { participantId: athlete.id }),
       });
       const data = await response.json() as { error?: string };
       if (!response.ok) return flash(data.error ?? "Athlete could not be assigned");
@@ -607,12 +667,31 @@ export default function Home() {
 
             {screen === "brief" && (
               <div className="focus-wrap">
-                <button className="back" onClick={() => setScreen("search")}>← Change athlete</button>
-                <div className="verify-card">
-                  <div className="verify-top"><span className="avatar large">{athlete.avatar}</span><div><div className="eyebrow">VERIFY WITH ATHLETE</div><h2>{athlete.name}</h2><p>{athlete.category} · {athlete.wave}</p></div><div className="big-bib"><small>BIB</small>{athlete.bib}</div></div>
-                  <div className="checks"><span>✓ Name confirmed</span><span>✓ BIB visible & matches</span><span>✓ Athlete ready</span></div>
-                  <div className="warning"><b>One judge · one athlete</b><span>This assignment locks when you start the sequence. Reassignment needs Control Desk approval.</span></div>
-                  <button className="primary" onClick={() => void claimAthlete()}>Pair & begin cognitive sequence <span>→</span></button>
+                <button className="back" onClick={() => { setDoublesPairing(null); setScreen("search"); }}>← Change athlete</button>
+                <div className={`verify-card${isDoublesContestId(athlete.contestId) ? " doubles-verify" : ""}`}>
+                  {isDoublesContestId(athlete.contestId) ? <>
+                    <div className="eyebrow">DOUBLES TEAM · TWO WRISTBANDS → ONE CLOCK</div>
+                    {!doublesPairing ? <div className="team-clock-rule"><b>Scan both partner wristbands</b><span>Roster selection identifies the team, but both active wristbands are required before the pair can be claimed.</span></div> : <div className="doubles-lanes">
+                      <div className="partner-lane confirmed">
+                        <small>PARTNER 1 · SCANNED</small><b>{doublesPairing?.first.name ?? athlete.name}</b>
+                        <span>BIB {doublesPairing?.first.bib ?? athlete.bib}</span>
+                      </div>
+                      <div className={`partner-lane ${doublesPairing?.second ? "confirmed" : "waiting"}`}>
+                        <small>PARTNER 2 · {doublesPairing?.second ? "SCANNED" : "WAITING"}</small>
+                        <b>{doublesPairing?.expected.name ?? "Scan registered teammate"}</b>
+                        <span>{doublesPairing?.expected.bib ? `BIB ${doublesPairing.expected.bib}` : "Wristband required"}</span>
+                      </div>
+                    </div>}
+                    {doublesPairing && <div className="team-clock-rule"><b>First start → last finish</b><span>One team clock, one cognitive response, one shared result sent to both BIBs.</span></div>}
+                    {!doublesPairing?.second
+                      ? <button className="primary" onClick={() => setShowQrScanner(true)}>{doublesPairing ? "Scan partner 2 wristband" : "Scan partner 1 wristband"} <span>▦</span></button>
+                      : <button className="primary" onClick={() => void claimAthlete()}>Confirm both athletes are ready <span>→</span></button>}
+                  </> : <>
+                    <div className="verify-top"><span className="avatar large">{athlete.avatar}</span><div><div className="eyebrow">VERIFY WITH ATHLETE</div><h2>{athlete.name}</h2><p>{athlete.category} · {athlete.wave}</p></div><div className="big-bib"><small>BIB</small>{athlete.bib}</div></div>
+                    <div className="checks"><span>✓ Name confirmed</span><span>✓ BIB visible & matches</span><span>✓ Athlete ready</span></div>
+                    <div className="warning"><b>One judge · one athlete</b><span>This assignment locks when you start the sequence. Reassignment needs Control Desk approval.</span></div>
+                    <button className="primary" onClick={() => void claimAthlete()}>Pair & begin cognitive sequence <span>→</span></button>
+                  </>}
                 </div>
               </div>
             )}
@@ -620,8 +699,10 @@ export default function Home() {
             {screen === "timing" && (
               <TimingConsole
                 athlete={athlete}
+                teammate={doublesPairing?.second ?? undefined}
                 onJudgeNextAthlete={() => {
                   setQuery("");
+                  setDoublesPairing(null);
                   setScreen("search");
                 }}
               />

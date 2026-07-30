@@ -1,6 +1,7 @@
 import { requireUser } from "../../../../lib/auth.server";
 import { query } from "../../../../lib/db";
 import { isDoublesContest, teamWarning } from "../../../../lib/checkin-stage";
+import { isDoublesContestId } from "../../../doubles";
 
 export async function GET(request: Request) {
   const auth = await requireUser(request, ["super_admin","event_admin","checkin"]);
@@ -8,11 +9,11 @@ export async function GET(request: Request) {
   const bib = new URL(request.url).searchParams.get("bib")?.trim() ?? "";
   if (!/^\d+$/.test(bib)) return Response.json({ error: "A numeric BIB is required" }, { status: 400 });
   const result = await query<{
-    id: string; bib: string; name: string; category: string; wave: string;
+    id: string; bib: string; name: string; category: string; contestId: string; wave: string;
     gender: string; dateOfBirth: string; club: string; checkinState: string;
     wristbandCode?: string; transponderCode?: string;
   }>(
-    `SELECT p.id,p.bib,p.name,p.category,p.wave,p.gender,
+    `SELECT p.id,p.bib,p.name,p.category,p.contest_id AS "contestId",p.wave,p.gender,
       COALESCE(to_char(p.date_of_birth,'YYYY-MM-DD'),'') AS "dateOfBirth",
       p.club,p.checkin_state AS "checkinState",
       max(a.asset_code) FILTER(WHERE a.asset_type='wristband' AND a.active) AS "wristbandCode",
@@ -31,16 +32,17 @@ export async function GET(request: Request) {
      FROM checkin_stage_records WHERE event_id=$1 AND participant_id=$2 AND state<>'reversed'`,
     [auth.user.eventId, participant.id],
   );
-  const teammates = isDoublesContest(participant.category) && participant.club.trim()
+  const doubles = isDoublesContestId(participant.contestId) || isDoublesContest(participant.category);
+  const teammates = doubles && participant.club.trim()
     ? await query(
       `SELECT p.id,p.bib,p.name,p.gender,COALESCE(to_char(p.date_of_birth,'YYYY-MM-DD'),'') AS "dateOfBirth",
-        p.category,p.wave,p.club,
+        p.category,p.contest_id AS "contestId",p.wave,p.club,
         COALESCE(json_object_agg(r.stage_type,r.state) FILTER(WHERE r.id IS NOT NULL),'{}') AS stages
        FROM participants p LEFT JOIN checkin_stage_records r
          ON r.participant_id=p.id AND r.event_id=p.event_id AND r.state<>'reversed'
-       WHERE p.event_id=$1 AND p.id<>$2 AND lower(p.club)=lower($3) AND lower(p.category)=lower($4)
+       WHERE p.event_id=$1 AND p.id<>$2 AND lower(p.club)=lower($3) AND p.contest_id=$4
        GROUP BY p.id ORDER BY p.bib`,
-      [auth.user.eventId, participant.id, participant.club, participant.category],
+      [auth.user.eventId, participant.id, participant.club, participant.contestId],
     )
     : { rows: [] };
 
@@ -48,6 +50,8 @@ export async function GET(request: Request) {
     participant,
     stages: Object.fromEntries(stages.rows.map((stage) => [stage.stageType, stage])),
     teammates: teammates.rows,
-    teamWarning: teamWarning(participant, teammates.rows),
+    teamWarning: doubles
+      ? teamWarning({ ...participant, category: "Doubles" }, teammates.rows)
+      : null,
   });
 }

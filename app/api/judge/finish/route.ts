@@ -15,6 +15,10 @@ export async function POST(request: Request) {
     );
     if (!finished.rows[0]) throw Object.assign(new Error("Active race session not found"), { status: 409 });
     await client.query(
+      "UPDATE race_session_participants SET released_at=now() WHERE race_session_id=$1 AND released_at IS NULL",
+      [finished.rows[0].id],
+    );
+    await client.query(
       `INSERT INTO audit_events(actor_id,event_id,action,entity_type,entity_id,details)
        VALUES($1,$2,'race.finish','race_session',$3,$4::jsonb)`,
       [auth.user.id, auth.user.eventId, finished.rows[0].id, JSON.stringify({ totalPenalty: body.totalPenalty })],

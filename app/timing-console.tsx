@@ -10,6 +10,7 @@ import {
   type StationOutcome,
 } from "./race-format";
 import type { Participant } from "./participants";
+import { isDoublesContestId } from "./doubles";
 
 type Split = {
   id: string;
@@ -30,7 +31,9 @@ type TimingSnapshot = {
     cognitiveRecallStartedAt: string | null;
     isOoc: boolean;
     state: string;
+    raceMode: "single" | "doubles";
   };
+  participants: Participant[];
   splits: Split[];
   outcomes: Array<{
     stationNumber: number;
@@ -46,6 +49,7 @@ type TimingSnapshot = {
     bonusSeconds: number;
     recallDurationMs: string | number;
   };
+  delivery: Array<{ bib: string; total: number; confirmed: number; attention: number }>;
 };
 
 type TimingAction = Record<string, unknown> & {
@@ -65,9 +69,11 @@ function numeric(value: string | number | undefined) {
 
 export default function TimingConsole({
   athlete,
+  teammate,
   onJudgeNextAthlete,
 }: {
   athlete: Participant;
+  teammate?: Participant;
   onJudgeNextAthlete: () => void;
 }) {
   const [snapshot, setSnapshot] = useState<TimingSnapshot | null>(null);
@@ -200,16 +206,22 @@ export default function TimingConsole({
   }
 
   const isComplete = stage.kind === "complete";
+  const doubles = snapshot.session.raceMode === "doubles" || isDoublesContestId(athlete.contestId);
+  const teamAthletes = snapshot.participants?.length
+    ? snapshot.participants
+    : [athlete, ...(teammate ? [teammate] : [])];
+  const deliveryPending = snapshot.delivery?.filter((target) => target.confirmed < target.total).length ?? 0;
+  const deliveryAttention = snapshot.delivery?.some((target) => target.attention > 0);
   return (
     <section className={`timing-console${snapshot.session.isOoc ? " is-ooc" : ""}`}>
       <header className="timing-athlete-rail">
         <div>
-          <small>ACTIVE ATHLETE</small>
-          <strong>{athlete.name}</strong>
-          <span>{athlete.category || "HYFIT athlete"}</span>
+          <small>{doubles ? "ACTIVE DOUBLES TEAM" : "ACTIVE ATHLETE"}</small>
+          <strong>{teamAthletes.map((participant) => participant.name).join(" + ")}</strong>
+          <span>{athlete.category || "HYFIT athlete"}{doubles && athlete.club ? ` · ${athlete.club}` : ""}</span>
         </div>
-        <div className="timing-bib"><small>BIB</small><b>{athlete.bib}</b></div>
-        <div className="timing-clock"><small>TOTAL TIME</small><b>{formatRaceTime(totalMs)}</b><span>{startMs ? "Running from Show Colours" : "Starts with Show Colours"}</span></div>
+        <div className="timing-bib"><small>{doubles ? "BIBS" : "BIB"}</small><b>{teamAthletes.map((participant) => participant.bib).join(" · ")}</b></div>
+        <div className="timing-clock"><small>{doubles ? "TEAM TIME" : "TOTAL TIME"}</small><b>{formatRaceTime(totalMs)}</b><span>{startMs ? (doubles ? "First start recorded" : "Running from Show Colours") : (doubles ? "Starts with first partner" : "Starts with Show Colours")}</span></div>
       </header>
 
       {snapshot.session.isOoc && (
@@ -257,6 +269,16 @@ export default function TimingConsole({
               <button className="timing-primary" disabled={busy} onClick={() => void act({ action: "memorise_complete" })}>
                 <span>Cognitive Memorise Complete</span>
                 <small>Hide colours and start 200 m Run 1</small>
+              </button>
+            </>
+          )}
+
+          {stage.kind === "team_start" && (
+            <>
+              <div className="timing-callout">Both athletes are ready. Start the shared clock when the first partner crosses the line.</div>
+              <button className="timing-primary timing-show-colours" disabled={busy} onClick={() => void act({ action: "team_start" })}>
+                <span>First partner starts</span>
+                <small>Starts the one team clock</small>
               </button>
             </>
           )}
@@ -330,7 +352,7 @@ export default function TimingConsole({
               {snapshot.cognitive && (
                 <>
                   <div className="timing-recall-review">
-                    <b>Athlete response</b>
+                    <b>{doubles ? "Team response" : "Athlete response"}</b>
                     <div className="timing-review-row">
                       {snapshot.cognitive.response.map((answer, index) => {
                         const choice = colorChoices[answer];
@@ -371,7 +393,7 @@ export default function TimingConsole({
                 </>
               )}
               <button className="timing-primary timing-finish" disabled={busy} onClick={() => void act({ action: "finish" })}>
-                <span>Finish Race</span><small>Tap when the athlete crosses the Finish Line</small>
+                <span>{doubles ? "Last partner finishes" : "Finish Race"}</span><small>{doubles ? "Tap when the second athlete crosses the Finish Line" : "Tap when the athlete crosses the Finish Line"}</small>
               </button>
             </>
           )}
@@ -379,10 +401,20 @@ export default function TimingConsole({
           {isComplete && (
             <div className="timing-complete">
               <div className="timing-complete-mark">✓</div>
-              <h2>Race timing complete</h2>
+              <h2>{doubles ? "Team timing complete" : "Race timing complete"}</h2>
               <p>All manual splits are saved. RaceResult updates continue automatically if any are pending.</p>
               <div className="timing-final-time"><small>MANUAL TOTAL</small><b>{formatRaceTime(totalMs)}</b></div>
-              <button className="timing-primary" onClick={onJudgeNextAthlete}>Time next athlete</button>
+              {doubles && snapshot.delivery?.length > 0 && (
+                <div className={`timing-delivery-state ${deliveryAttention ? "attention" : deliveryPending ? "pending" : "confirmed"}`}>
+                  <b>{deliveryAttention
+                    ? "Team result needs RaceResult attention"
+                    : deliveryPending
+                      ? `Team result saved · ${snapshot.delivery.length - deliveryPending} of ${snapshot.delivery.length} RaceResult records confirmed`
+                      : "Team result confirmed for both BIBs"}</b>
+                  <span>{snapshot.delivery.map((target) => `BIB ${target.bib}: ${target.confirmed}/${target.total}`).join(" · ")}</span>
+                </div>
+              )}
+              <button className="timing-primary" onClick={onJudgeNextAthlete}>{doubles ? "Time next team" : "Time next athlete"}</button>
             </div>
           )}
         </article>

@@ -14,6 +14,7 @@ import { deliverOutboxOperation } from "../../penalties/route";
 type TimingAction =
   | { action: "start"; bib: string; operationId: string; clientObservedAt?: string }
   | { action: "memorise_complete"; bib: string; operationId: string; clientObservedAt?: string }
+  | { action: "team_start"; bib: string; operationId: string; clientObservedAt?: string }
   | { action: "complete_stage"; bib: string; operationId: string; stageId: string; outcome?: StationOutcome; penaltySeconds?: number; note?: string; clientObservedAt?: string }
   | { action: "complete_recall"; bib: string; operationId: string; response: ColorKey[]; tapObservedAt: string[]; clientObservedAt?: string }
   | { action: "finish"; bib: string; operationId: string; clientObservedAt?: string };
@@ -25,6 +26,7 @@ type ActiveRace = {
   bib: string;
   participantName: string;
   contestId: string;
+  raceMode: "single" | "doubles";
   judgeId: string;
   currentStage: string;
   manualStartedAt: string | null;
@@ -45,16 +47,26 @@ async function raceSnapshot(eventId: string, judgeId: string, bib: string) {
   const session = await query<ActiveRace>(
     `SELECT r.id,r.event_id AS "eventId",r.participant_id AS "participantId",p.bib,
       p.name AS "participantName",p.contest_id AS "contestId",r.judge_id AS "judgeId",r.current_stage AS "currentStage",
+      r.race_mode AS "raceMode",
       r.manual_started_at AS "manualStartedAt",
       r.cognitive_recall_started_at AS "cognitiveRecallStartedAt",
       r.is_ooc AS "isOoc",r.state
-     FROM race_sessions r JOIN participants p ON p.id=r.participant_id
-     WHERE r.event_id=$1 AND r.judge_id=$2 AND p.bib=$3
+     FROM race_sessions r
+     JOIN participants p ON p.id=r.participant_id
+     JOIN race_session_participants lookup ON lookup.race_session_id=r.id
+     WHERE r.event_id=$1 AND r.judge_id=$2 AND lookup.participant_bib_snapshot=$3
        AND r.state IN ('active','finished')
      ORDER BY r.started_at DESC LIMIT 1`,
     [eventId, judgeId, bib],
   );
   if (!session.rows[0]) return null;
+  const participants = await query(
+    `SELECT participant_id AS id,participant_bib_snapshot AS bib,
+      participant_name_snapshot AS name,contest_id_snapshot AS "contestId",
+      contest_snapshot AS category,club_snapshot AS club,display_order AS "displayOrder"
+     FROM race_session_participants WHERE race_session_id=$1 ORDER BY display_order`,
+    [session.rows[0].id],
+  );
   const splits = await query(
     `SELECT id,stage_id AS "stageId",stage_name AS "stageName",
       boundary_at AS "boundaryAt",cumulative_ms AS "cumulativeMs",
@@ -76,12 +88,24 @@ async function raceSnapshot(eventId: string, judgeId: string, bib: string) {
      FROM cognitive_attempts WHERE race_session_id=$1 ORDER BY created_at DESC LIMIT 1`,
     [session.rows[0].id],
   );
+  const delivery = await query(
+    `SELECT bib,
+      count(*)::int AS total,
+      count(*) FILTER(WHERE state='confirmed')::int AS confirmed,
+      count(*) FILTER(WHERE state IN ('conflict','failed'))::int AS attention
+     FROM outbox_operations
+     WHERE event_id=$1 AND operation_key LIKE $2
+     GROUP BY bib ORDER BY bib`,
+    [eventId, `${session.rows[0].id}:%`],
+  );
   return {
     session: session.rows[0],
+    participants: participants.rows,
     stage: raceStage(session.rows[0].currentStage),
     splits: splits.rows,
     outcomes: outcomes.rows,
     cognitive: cognitive.rows[0] ?? null,
+    delivery: delivery.rows,
   };
 }
 
@@ -92,14 +116,27 @@ async function insertOutbox(
   fieldName: string,
   value: string | number,
 ) {
-  const result = await client.query(
-    `INSERT INTO outbox_operations(operation_key,event_id,participant_id,bib,field_name,value)
-     VALUES($1,$2,$3,$4,$5,$6)
-     ON CONFLICT(operation_key) DO UPDATE SET operation_key=EXCLUDED.operation_key
-     RETURNING id`,
-    [`${actionKey}:rr:${fieldName}`, race.eventId, race.participantId, race.bib, fieldName, String(value)],
+  const deliveryTargets = await client.query<{ participantId: string; bib: string }>(
+    `SELECT participant_id AS "participantId",participant_bib_snapshot AS bib
+     FROM race_session_participants WHERE race_session_id=$1 ORDER BY display_order`,
+    [race.id],
   );
-  return result.rows[0].id;
+  const targets = deliveryTargets.rows.length
+    ? deliveryTargets.rows
+    : [{ participantId: race.participantId, bib: race.bib }];
+  return Promise.all(targets.map(async (target) => {
+    const result = await client.query(
+      `INSERT INTO outbox_operations(operation_key,event_id,participant_id,bib,field_name,value)
+       VALUES($1,$2,$3,$4,$5,$6)
+       ON CONFLICT(operation_key) DO UPDATE SET operation_key=EXCLUDED.operation_key
+       RETURNING id`,
+      [
+        `${race.id}:${actionKey}:participant:${target.participantId}:rr:${fieldName}`,
+        race.eventId,target.participantId,target.bib,fieldName,String(value),
+      ],
+    );
+    return result.rows[0].id as string;
+  }));
 }
 
 export async function GET(request: Request) {
@@ -133,11 +170,15 @@ export async function POST(request: Request) {
       const raceResult = await client.query<ActiveRace>(
         `SELECT r.id,r.event_id AS "eventId",r.participant_id AS "participantId",p.bib,
           p.name AS "participantName",p.contest_id AS "contestId",r.judge_id AS "judgeId",r.current_stage AS "currentStage",
+          r.race_mode AS "raceMode",
           r.manual_started_at AS "manualStartedAt",
           r.cognitive_recall_started_at AS "cognitiveRecallStartedAt",
           r.is_ooc AS "isOoc",r.state
-         FROM race_sessions r JOIN participants p ON p.id=r.participant_id
-         WHERE r.event_id=$1 AND r.judge_id=$2 AND p.bib=$3 AND r.state='active'
+         FROM race_sessions r
+         JOIN participants p ON p.id=r.participant_id
+         JOIN race_session_participants lookup ON lookup.race_session_id=r.id
+         WHERE r.event_id=$1 AND r.judge_id=$2
+           AND lookup.participant_bib_snapshot=$3 AND r.state='active'
          FOR UPDATE OF r`,
         [auth.user.eventId, auth.user.id, body.bib],
       );
@@ -183,14 +224,24 @@ export async function POST(request: Request) {
         await client.query(
           `UPDATE race_sessions SET current_stage='cognitive_memorise',
            manual_started_at=$2,last_action_key=$3,updated_at=now() WHERE id=$1`,
-          [race.id, boundaryAt, body.operationId],
+          [race.id, race.raceMode === "doubles" ? null : boundaryAt, body.operationId],
         );
       } else if (body.action === "memorise_complete") {
         if (race.currentStage !== "cognitive_memorise") throw Object.assign(new Error("Cognitive memorisation is not active"), { status: 409 });
         await addSplit("cognitive_memorise", "Cognitive Memorisation");
         await client.query(
-          `UPDATE race_sessions SET current_stage='run_1',last_action_key=$2,updated_at=now() WHERE id=$1`,
-          [race.id, body.operationId],
+          `UPDATE race_sessions SET current_stage=$2,last_action_key=$3,updated_at=now() WHERE id=$1`,
+          [race.id, race.raceMode === "doubles" ? "team_start" : "run_1", body.operationId],
+        );
+      } else if (body.action === "team_start") {
+        if (race.raceMode !== "doubles" || race.currentStage !== "team_start") {
+          throw Object.assign(new Error("Team start is not ready"), { status: 409 });
+        }
+        await addSplit("team_start", "First Partner Start");
+        await client.query(
+          `UPDATE race_sessions SET current_stage='run_1',manual_started_at=$2,
+           last_action_key=$3,updated_at=now() WHERE id=$1`,
+          [race.id, boundaryAt, body.operationId],
         );
       } else if (body.action === "complete_stage") {
         const stage = raceStage(body.stageId);
@@ -219,10 +270,10 @@ export async function POST(request: Request) {
               stationNumber, outcome, penaltySeconds, note, splitId],
           );
           isOoc = isOoc || outcome === "ics";
-          deliveryIds.push(await insertOutbox(client, body.operationId, race, `station${stationNumber}penalty`, penaltySeconds));
-          deliveryIds.push(await insertOutbox(client, body.operationId, race, `station${stationNumber}ics`, outcome === "ics" ? 1 : 0));
-          deliveryIds.push(await insertOutbox(client, body.operationId, race, `station${stationNumber}note`, note));
-          if (outcome === "ics") deliveryIds.push(await insertOutbox(client, body.operationId, race, "Status", 1));
+          deliveryIds.push(...await insertOutbox(client, body.operationId, race, `station${stationNumber}penalty`, penaltySeconds));
+          deliveryIds.push(...await insertOutbox(client, body.operationId, race, `station${stationNumber}ics`, outcome === "ics" ? 1 : 0));
+          deliveryIds.push(...await insertOutbox(client, body.operationId, race, `station${stationNumber}note`, note));
+          if (outcome === "ics") deliveryIds.push(...await insertOutbox(client, body.operationId, race, "Status", 1));
         }
         const recallStartedAt = stage.id === "station_6" ? boundaryAt : race.cognitiveRecallStartedAt;
         await client.query(
@@ -253,8 +304,8 @@ export async function POST(request: Request) {
             adjustment.bonusSeconds, recallStartedAt, boundaryAt,
             Math.max(0, boundaryAt.getTime() - recallStartedAt.getTime()), splitId],
         );
-        deliveryIds.push(await insertOutbox(client, body.operationId, race, "cognitiveskillpenalty", adjustment.penaltySeconds));
-        deliveryIds.push(await insertOutbox(client, body.operationId, race, "cognitiveskillbonus", adjustment.bonusSeconds));
+        deliveryIds.push(...await insertOutbox(client, body.operationId, race, "cognitiveskillpenalty", adjustment.penaltySeconds));
+        deliveryIds.push(...await insertOutbox(client, body.operationId, race, "cognitiveskillbonus", adjustment.bonusSeconds));
         await client.query(
           `UPDATE race_sessions SET current_stage='finish_approach',
            last_action_key=$2,updated_at=now() WHERE id=$1`,
@@ -267,6 +318,10 @@ export async function POST(request: Request) {
           `UPDATE race_sessions SET current_stage='complete',state='finished',
            finished_at=$2,last_action_key=$3,updated_at=now() WHERE id=$1`,
           [race.id, boundaryAt, body.operationId],
+        );
+        await client.query(
+          "UPDATE race_session_participants SET released_at=$2 WHERE race_session_id=$1 AND released_at IS NULL",
+          [race.id, boundaryAt],
         );
       }
 

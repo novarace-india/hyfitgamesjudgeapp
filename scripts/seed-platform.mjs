@@ -20,15 +20,18 @@ try {
     [pinHash, active.id],
   );
   for (const participant of [
-    ["25645","Riya Sharma","Female Open","Wave 12 · 09:40"],
-    ["25646","Rishabh Shah","Male Open","Wave 12 · 09:40"],
-    ["30821","Arjun Menon","Male Pro","Wave 14 · 10:20"],
-    ["17204","Meera & Tara","Female Doubles","Wave 08 · 08:20"],
-    ["10483","Aarav Rao","NextGen Boys","Wave 03 · 16:30"],
+    ["25645","Riya Sharma","5","Female Open","Wave 12 · 09:40",""],
+    ["25646","Rishabh Shah","6","Male Open","Wave 12 · 09:40",""],
+    ["30821","Arjun Menon","7","Male Pro","Wave 14 · 10:20",""],
+    ["17204","Meera Iyer","11","Female Doubles","Wave 08 · 08:20","Rapid Racers"],
+    ["17205","Tara Nair","11","Female Doubles","Wave 08 · 08:20","Rapid Racers"],
+    ["10483","Aarav Rao","1","NextGen Boys","Wave 03 · 16:30",""],
   ]) {
     await pool.query(
-      `INSERT INTO participants(event_id,bib,name,category,wave,last_source_sync_at)
-       VALUES($1,$2,$3,$4,$5,now()) ON CONFLICT(event_id,bib) DO UPDATE SET name=EXCLUDED.name,category=EXCLUDED.category,wave=EXCLUDED.wave`,
+      `INSERT INTO participants(event_id,bib,name,contest_id,category,wave,club,last_source_sync_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,now()) ON CONFLICT(event_id,bib) DO UPDATE SET
+       name=EXCLUDED.name,contest_id=EXCLUDED.contest_id,category=EXCLUDED.category,
+       wave=EXCLUDED.wave,club=EXCLUDED.club`,
       [active.id,...participant],
     );
   }

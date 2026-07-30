@@ -7,8 +7,11 @@ export async function GET(request: Request) {
     const auth = await requireUser(request, ["super_admin","event_admin","judge","checkin","readonly"]);
     if ("error" in auth) return auth.error;
     const result = await query(
-      `SELECT p.id,p.bib,p.name,p.category,p.contest_id AS "contestId",p.wave,
-       CASE WHEN EXISTS(SELECT 1 FROM race_sessions r WHERE r.participant_id=p.id AND r.state='active') THEN 'On course' ELSE 'Ready' END AS status
+      `SELECT p.id,p.bib,p.name,p.category,p.contest_id AS "contestId",p.wave,p.club,
+       CASE WHEN EXISTS(
+         SELECT 1 FROM race_session_participants rp
+         WHERE rp.participant_id=p.id AND rp.event_id=p.event_id AND rp.released_at IS NULL
+       ) THEN 'On course' ELSE 'Ready' END AS status
        FROM participants p WHERE p.event_id=$1 ORDER BY p.bib`,
       [auth.user.eventId],
     );
