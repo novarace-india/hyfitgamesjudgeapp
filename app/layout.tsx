@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./operations.css";
+import "./brand.css";
 
 export const metadata: Metadata = {
   title: "HYFIT Games Judge App",
@@ -8,9 +10,9 @@ export const metadata: Metadata = {
     "codex-preview": "development",
   },
   icons: {
-    icon: "/branding/hyfit-games-logo.png",
-    shortcut: "/branding/hyfit-games-logo.png",
-    apple: "/branding/hyfit-games-logo.png",
+    icon: "/branding/hyfit-games-2026-dark.svg",
+    shortcut: "/branding/hyfit-games-2026-dark.svg",
+    apple: "/branding/hyfit-games-2026-dark.svg",
   },
 };
 

@@ -4,7 +4,6 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 import QrScanner from "../qr-scanner";
 import SignaturePad from "../signature-pad";
-import "../operations.css";
 
 type StageType = "STAGE_1_WRISTBAND" | "STAGE_2_TRANSPONDER";
 type StageReceipt = { state: string; completedAt: string; stationCode: string; stationName: string; volunteerName: string; assetCode: string };
@@ -129,17 +128,17 @@ export default function CheckinPage() {
     setReceipt(null); setMessage(""); setTransactionKey(crypto.randomUUID());
   }
 
-  if (!loggedIn) return <main className="ops-login"><div className="ops-login-card"><Image src="/branding/hyfit-games-logo.png" width={90} height={90} unoptimized alt="HYFIT"/><div className="ops-kicker">VOLUNTEER OPERATIONS</div><h1>Check-in sign in</h1><input placeholder="Staff ID" value={credentials.staffId} onChange={(event)=>setCredentials({...credentials,staffId:event.target.value})}/><input type="password" inputMode="numeric" placeholder="PIN" value={credentials.pin} onChange={(event)=>setCredentials({...credentials,pin:event.target.value})}/><button onClick={signIn}>Open my counter</button>{message&&<p className="ops-error">{message}</p>}</div></main>;
+  if (!loggedIn) return <main className="ops-login checkin-login"><div className="ops-login-card"><Image src="/branding/hyfit-games-2026-white.svg" width={90} height={90} unoptimized alt="HYFIT"/><div className="ops-kicker">VOLUNTEER OPERATIONS</div><h1>Check-in sign in</h1><input placeholder="Staff ID" value={credentials.staffId} onChange={(event)=>setCredentials({...credentials,staffId:event.target.value})}/><input type="password" inputMode="numeric" placeholder="PIN" value={credentials.pin} onChange={(event)=>setCredentials({...credentials,pin:event.target.value})}/><button onClick={signIn}>Open my counter</button>{message&&<p className="ops-error">{message}</p>}</div></main>;
 
   const stageLabel = stageOne ? "STAGE 1 · WRISTBAND" : "STAGE 2 · TRANSPONDER";
   const participant = result?.participant;
   if (receipt) return <main className={`checkin-shell stage-shell ${stageOne ? "stage-one" : "stage-two"}`}>
-    <header><Image src="/branding/hyfit-games-logo.png" width={55} height={55} unoptimized alt="HYFIT"/><div><small>{stageLabel}</small><b>{context?.station?.code} · {context?.station?.name}</b></div><span className="ops-live">● Saved locally</span></header>
+    <header><Image src="/branding/hyfit-games-2026-white.svg" width={55} height={55} unoptimized alt="HYFIT"/><div><small>{stageLabel}</small><b>{context?.station?.code} · {context?.station?.name}</b></div><span className="ops-live">● Saved locally</span></header>
     <section className="stage-receipt"><div className="receipt-check">✓</div><small>{stageOne ? "WRISTBAND HANDED OVER" : "TRANSPONDER HANDED OVER"}</small><h1>BIB {receipt.bib}</h1><div className="receipt-asset"><span>{stageOne ? "WRISTBAND" : "TRANSPONDER1"}</span><b>{receipt.assetCode}</b></div><p>{new Date(receipt.completedAt).toLocaleString()} · {receipt.state === "completed" ? "RaceResult confirmed" : receipt.state === "attention" ? "RaceResult needs Admin attention" : "RaceResult sync pending"}</p><button className="stage-primary" onClick={reset}>Next athlete</button></section>
   </main>;
 
   return <main className={`checkin-shell stage-shell ${stageOne ? "stage-one" : "stage-two"}`}>
-    <header><Image src="/branding/hyfit-games-logo.png" width={55} height={55} unoptimized alt="HYFIT"/><div><small>{stageLabel}</small><b>{context?.station ? `${context.station.code} · ${context.station.name}` : "Counter not assigned"}</b></div><span className="ops-live">● Local server</span></header>
+    <header><Image src="/branding/hyfit-games-2026-white.svg" width={55} height={55} unoptimized alt="HYFIT"/><div><small>{stageLabel}</small><b>{context?.station ? `${context.station.code} · ${context.station.name}` : "Counter not assigned"}</b></div><span className="ops-live">● Local server</span></header>
     <div className="stage-rail"><b>{stageOne ? "01" : "02"}</b><span>{stageOne ? "VERIFY → DECLARE → WRISTBAND" : "CHECK STAGE 1 → TRANSPONDER"}</span><small>{context?.volunteer.staffId} · {context?.volunteer.name}</small></div>
     <section className="checkin-content stage-content">
       {message&&<div className="ops-message">{message}<button onClick={()=>setMessage("")}>×</button></div>}

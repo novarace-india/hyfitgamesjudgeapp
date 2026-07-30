@@ -503,7 +503,7 @@ export default function Home() {
     <main className="app-shell">
       <header className="topbar">
         <button className="brand" onClick={() => screen === "login" || flash("Race is locked while judging")}>
-          <Image className="brand-logo" src="/branding/hyfit-games-logo.png" alt="HYFIT Games — Run. Lift. Live." width={68} height={68} priority unoptimized />
+          <Image className="brand-logo" src="/branding/hyfit-games-2026-white.svg" alt="HYFIT Games — Run. Lift. Live." width={68} height={68} priority unoptimized />
           <span><b>HYFIT GAMES</b><small>JUDGE APP</small></span>
         </button>
         {screen !== "login" && (
@@ -567,7 +567,7 @@ export default function Home() {
                 <div className="event-grid">
                   <button className="event-card featured" onClick={() => setScreen("search")}>
                     <div className="event-top"><span>LIVE</span><i>Open</i></div>
-                    <Image className="event-logo" src="/branding/hyfit-games-logo.png" alt="HYFIT Games — Run. Lift. Live." width={112} height={112} unoptimized />
+                    <Image className="event-logo" src="/branding/hyfit-games-2026-white.svg" alt="HYFIT Games — Run. Lift. Live." width={112} height={112} unoptimized />
                     <h3>HYFIT Games Bengaluru</h3>
                     <p>Hall A · Manpho Convention Centre</p>
                     <div className="event-stats"><span><b>4,982</b> Athletes</span><span><b>24</b> Active waves</span></div>
@@ -575,7 +575,7 @@ export default function Home() {
                   </button>
                   <div className="event-card muted">
                     <div className="event-top"><span className="later">UP NEXT</span><i>Tomorrow</i></div>
-                    <Image className="event-logo ghost" src="/branding/hyfit-games-logo.png" alt="HYFIT Games — Run. Lift. Live." width={112} height={112} unoptimized /><h3>HYFIT Games Bengaluru</h3><p>Day 2 · Starts 07:00</p>
+                    <Image className="event-logo ghost" src="/branding/hyfit-games-2026-white.svg" alt="HYFIT Games — Run. Lift. Live." width={112} height={112} unoptimized /><h3>HYFIT Games Bengaluru</h3><p>Day 2 · Starts 07:00</p>
                     <div className="event-cta disabled">Available tomorrow</div>
                   </div>
                 </div>
